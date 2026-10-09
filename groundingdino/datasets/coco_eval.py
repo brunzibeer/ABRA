@@ -69,10 +69,7 @@ class CocoEvaluator(object):
         for coco_eval in self.coco_eval.values():
             coco_eval.accumulate()
 
-    def summarize(self, seen_classes=[]): 
-        # Convert to lowercase for case-insensitive matching
-        seen_classes_lower = [cls.lower() for cls in seen_classes]
-        
+    def summarize(self):
         for iou_type, coco_eval in self.coco_eval.items():
             print("IoU metric: {}".format(iou_type))
             coco_eval.summarize()
@@ -97,10 +94,6 @@ class CocoEvaluator(object):
             precisions = coco_eval.eval["precision"]
             results_per_category = []
             
-            # Collect APs for seen and unseen classes
-            seen_aps = []
-            unseen_aps = []
-            
             for idx, name in enumerate(self.class_names):
                 # AP (media su IoU da 0.50 a 0.95)
                 precision = precisions[:, :, idx, 0, -1]
@@ -118,20 +111,6 @@ class CocoEvaluator(object):
                 ap75 = np.mean(precision75) if precision75.size else float("nan")
 
                 results_per_category.append((name, ap*100, ap50*100, ap75*100))
-                
-                # Collect APs for seen/unseen metrics
-                if not np.isnan(ap):
-                    if name.lower() in seen_classes_lower:
-                        seen_aps.append(ap * 100)
-                    else:
-                        unseen_aps.append(ap * 100)
-
-            # Calculate seen and unseen mAP
-            seen_map = np.mean(seen_aps) if seen_aps else float("nan")
-            unseen_map = np.mean(unseen_aps) if unseen_aps else float("nan")
-            
-            print(f"\nSeen mAP ({', '.join(seen_classes)}): {seen_map:.3f}")
-            print(f"Unseen mAP (remaining classes): {unseen_map:.3f}")
 
             headers = ["category", "AP", "AP50", "AP75"]
 
@@ -150,11 +129,7 @@ class CocoEvaluator(object):
                         columns=["category", "AP", "AP50", "AP75"],
                     )
                 })
-                wandb.log({
-                    "EVAL/AP": stats[0] * 100,
-                    "EVAL/seen_mAP": seen_map,
-                    "EVAL/unseen_mAP": unseen_map,
-                })
+                wandb.log({"EVAL/AP": stats[0] * 100})
 
     def prepare(self, predictions, iou_type):
         if iou_type == "bbox":

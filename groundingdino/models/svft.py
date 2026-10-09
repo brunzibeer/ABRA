@@ -9,32 +9,6 @@ import torch.nn.functional as F
 from torch_sparse import SparseTensor
 
 
-def create_orthonormal_matrix(A):
-    # returns an orthonormal matrix (square) of size (min(A.shape), min(A.shape))
-    Q, R = torch.qr(A)
-    return Q
-
-def replace_svft_with_fused_linear(model, target_modules_list):
-    print("Replacing SVFT layers with new Linear layers")
-
-    # filter out svft layer
-    target_modules_list = [l for l in target_modules_list if "svft_layer" not in l]
-
-    for target_path in tqdm(reversed(target_modules_list), total=len(target_modules_list)):
-        parent_path = target_path[: target_path.rfind(".")] if "." in target_path else ""
-        target_name = target_path.split(".")[-1]
-        parent = model.get_submodule(parent_path) if parent_path else model
-        target = model.get_submodule(target_path)
-        in_dim = target.svft_layer.v.shape[1]
-        out_dim = target.svft_layer.u.shape[0]
-        if target.bias is None:
-            lin = torch.nn.Linear(in_dim, out_dim, bias=False)
-        else:
-            lin = torch.nn.Linear(in_dim, out_dim, bias=True)
-            lin.bias.data = target.bias.data
-        lin.weight.data = target.merge_and_unload()
-        parent.__setattr__(target_name, lin)
-
 class SVFTLayer(nn.Module):
     def __init__(self, u, s, v, off_diag, pattern="banded", rank=None, fill_orthonormal=False, transporter=False, eval=False, svft_ckpt=False):
 
@@ -255,13 +229,3 @@ class LinearWithSVFT(nn.Module):
     @property
     def s(self):
         return self.svft_layer.get_s_dense()
-
-
-def freeze_model(model, exclude_list = None):
-    ''' Freeze all parameters of the model '''
-    if exclude_list is None:
-        exclude_list = []
-
-    for n, p in model.named_parameters():
-        if not any(e in n for e in exclude_list):
-            p.requires_grad = False

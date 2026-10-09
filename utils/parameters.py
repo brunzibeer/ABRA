@@ -77,8 +77,6 @@ def get_target_modules_list(model, trainable, svft=False):
         regular_expression = r"^(?=.*attn)[\w\.]+$"
     elif trainable == 'all':
         regular_expression = r".+"
-    elif trainable == 'frcnn':
-        regular_expression = r"^(rpn|roi_heads)[\w\.]*$"
 
     target_modules = []
     for n, m in model.named_modules():

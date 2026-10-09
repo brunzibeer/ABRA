@@ -1,7 +1,6 @@
-import os
 import groundingdino.datasets.transforms as T
 
-def make_coco_transforms(image_set, fix_size=False, strong_aug=False, args=None):
+def make_coco_transforms(image_set, fix_size=False, args=None):
 
     normalize = T.Compose([
         T.ToTensor(),
@@ -29,14 +28,6 @@ def make_coco_transforms(image_set, fix_size=False, strong_aug=False, args=None)
         scales2_resize = [int(i*data_aug_scale_overlap) for i in scales2_resize]
         scales2_crop = [int(i*data_aug_scale_overlap) for i in scales2_crop]
 
-    # datadict_for_print = {
-    #     'scales': scales,
-    #     'max_size': max_size,
-    #     'scales2_resize': scales2_resize,
-    #     'scales2_crop': scales2_crop
-    # }
-    # print("data_aug_params:", json.dumps(datadict_for_print, indent=2))
-
     if image_set == 'train':
         if fix_size:
             return T.Compose([
@@ -45,28 +36,6 @@ def make_coco_transforms(image_set, fix_size=False, strong_aug=False, args=None)
                 normalize,
             ])
 
-        if strong_aug:
-            import groundingdino.datasets.sltransform as SLT
-            
-            return T.Compose([
-                T.RandomHorizontalFlip(),
-                T.RandomSelect(
-                    T.RandomResize(scales, max_size=max_size),
-                    T.Compose([
-                        T.RandomResize(scales2_resize),
-                        T.RandomSizeCrop(*scales2_crop),
-                        T.RandomResize(scales, max_size=max_size),
-                    ])
-                ),
-                SLT.RandomSelectMulti([
-                    SLT.RandomCrop(),
-                    SLT.LightingNoise(),
-                    SLT.AdjustBrightness(2),
-                    SLT.AdjustContrast(2),
-                ]),
-                normalize,
-            ])
-        
         return T.Compose([
             T.RandomHorizontalFlip(),
             T.RandomSelect(
@@ -81,13 +50,6 @@ def make_coco_transforms(image_set, fix_size=False, strong_aug=False, args=None)
         ])
 
     if image_set in ['val', 'eval_debug', 'train_reg', 'test']:
-
-        if os.environ.get("GFLOPS_DEBUG_SHILONG", False) == 'INFO':
-            print("Under debug mode for flops calculation only!!!!!!!!!!!!!!!!")
-            return T.Compose([
-                T.ResizeDebug((1280, 800)),
-                normalize,
-            ])   
 
         return T.Compose([
             T.RandomResize([max(scales)], max_size=max_size),

@@ -34,11 +34,6 @@ from groundingdino.util.misc import (
     is_dist_avail_and_initialized,
     nested_tensor_from_tensor_list,
 )
-from groundingdino.util.utils import get_phrases_from_posmap
-from groundingdino.util.visualizer import COCOVisualizer
-from groundingdino.util.vl_utils import create_positive_map_from_span
-
-from ..registry import MODULE_BUILD_FUNCS
 from .backbone import build_backbone
 from .bertwarper import (
     BertModelWarper,
@@ -48,7 +43,6 @@ from .bertwarper import (
 from .transformer import build_transformer
 from .utils import MLP, ContrastiveEmbed, sigmoid_focal_loss
 
-from .matcher import build_matcher
 
 
 
@@ -570,46 +564,6 @@ class SetCriterion(nn.Module):
             
         return {'entropy': loss_ent}
 
-    def compute_grounding_dino_entropy(self, outputs, ita=0.0, conf_threshold=0.3):
-        """
-        Computes a numerically stable Binary Entropy Loss for Grounding DINO.
-        """
-        # pred_logits shape: [Batch, Num_Queries, Num_Tokens]
-        logits = outputs['pred_logits']
-        
-        # 1. Numerically stable probabilities and logs (NO NaNs allowed)
-        p = torch.sigmoid(logits)
-        log_p = F.logsigmoid(logits)
-        
-        # Mathematical trick: log(1 - sigmoid(x)) is exactly equal to logsigmoid(-x)
-        # This avoids doing log(0) when p is exactly 1.0
-        log_1_minus_p = F.logsigmoid(-logits)
-        
-        # 2. Compute Binary Entropy: - p*log(p) - (1-p)*log(1-p)
-        # Shape: [Batch, Num_Queries, Num_Tokens]
-        binary_entropy = -(p * log_p + (1.0 - p) * log_1_minus_p)
-        
-        # Sum across the text tokens to get total entropy per bounding box query
-        # Shape: [Batch, Num_Queries]
-        ent = binary_entropy.sum(dim=-1)
-        
-        # 3. The Background Mask (CRITICAL for DETR models)
-        # Find the highest confidence score for each query
-        max_probs = p.max(dim=-1)[0]
-        
-        # Only minimize entropy for queries that actually seem to contain objects.
-        # Forcing pure background queries to be "confident" will destroy the model.
-        mask = max_probs > conf_threshold
-        
-        # 4. Final Mean
-        if mask.sum() > 0:
-            loss_ent = ent[mask].mean()
-        else:
-            # Prevents detached graph errors if no boxes pass the threshold early in training
-            loss_ent = ent.sum() * 0.0 
-            
-        return loss_ent
-
     def get_loss(self, loss, outputs, targets, indices, num_boxes, **kwargs):
         loss_map = {
             'labels': self.token_sigmoid_binary_focal_loss,
@@ -827,86 +781,6 @@ class PostProcess(nn.Module):
         results = [{'scores': s, 'labels': l, 'boxes': b} for s, l, b in zip(scores, labels, boxes)]
         return results
 
-
-@MODULE_BUILD_FUNCS.registe_with_name(module_name="groundingdino")
-def build_groundingdino(args):
-    device = torch.device(args.device)
-    backbone = build_backbone(args)
-    transformer = build_transformer(args)
-
-    dn_labelbook_size = args.dn_labelbook_size
-    dec_pred_bbox_embed_share = args.dec_pred_bbox_embed_share
-    sub_sentence_present = args.sub_sentence_present
-
-    model = GroundingDINO(
-        backbone,
-        transformer,
-        num_queries=args.num_queries,
-        aux_loss=args.aux_loss,
-        iter_update=True,
-        query_dim=4,
-        num_feature_levels=args.num_feature_levels,
-        nheads=args.nheads,
-        dec_pred_bbox_embed_share=dec_pred_bbox_embed_share,
-        two_stage_type=args.two_stage_type,
-        two_stage_bbox_embed_share=args.two_stage_bbox_embed_share,
-        two_stage_class_embed_share=args.two_stage_class_embed_share,
-        num_patterns=args.num_patterns,
-        dn_number=0,
-        dn_box_noise_scale=args.dn_box_noise_scale,
-        dn_label_noise_ratio=args.dn_label_noise_ratio,
-        dn_labelbook_size=dn_labelbook_size,
-        text_encoder_type=args.text_encoder_type,
-        sub_sentence_present=sub_sentence_present,
-        max_text_len=args.max_text_len,
-    )
-
-
-
-    matcher = build_matcher(args)
-
-    # prepare weight dict
-    weight_dict = {'loss_ce': args.cls_loss_coef, 'loss_bbox': args.bbox_loss_coef, 'entropy': args.fda_ent}
-    weight_dict['loss_giou'] = args.giou_loss_coef
-    clean_weight_dict_wo_dn = copy.deepcopy(weight_dict)
-
-    clean_weight_dict = copy.deepcopy(weight_dict)
-
-    # TODO this is a hack
-    if args.aux_loss:
-        aux_weight_dict = {}
-        for i in range(args.dec_layers - 1):
-            aux_weight_dict.update({k + f'_{i}': v for k, v in clean_weight_dict.items()})
-        weight_dict.update(aux_weight_dict)
-
-    if args.two_stage_type != 'no':
-        interm_weight_dict = {}
-        try:
-            no_interm_box_loss = args.no_interm_box_loss
-        except:
-            no_interm_box_loss = False
-        _coeff_weight_dict = {
-            'loss_ce': 1.0,
-            'loss_bbox': 1.0 if not no_interm_box_loss else 0.0,
-            'loss_giou': 1.0 if not no_interm_box_loss else 0.0,
-        }
-        try:
-            interm_loss_coef = args.interm_loss_coef
-        except:
-            interm_loss_coef = 1.0
-        interm_weight_dict.update({k + f'_interm': v * interm_loss_coef * _coeff_weight_dict[k] for k, v in clean_weight_dict_wo_dn.items()})
-        weight_dict.update(interm_weight_dict)
-
-    # losses = ['labels', 'boxes', 'cardinality']
-    losses = ['labels', 'boxes', 'entropy']
-
-    criterion = SetCriterion(matcher=matcher, weight_dict=weight_dict,
-                             focal_alpha=args.focal_alpha, focal_gamma=args.focal_gamma,losses=losses
-                             )
-    criterion.to(device)
-    postprocessors = {'bbox': PostProcess(num_select=args.num_select  , text_encoder_type=args.text_encoder_type,nms_iou_threshold=args.nms_iou_threshold,args=args)}
-
-    return model, criterion, postprocessors
 
 def create_positive_map(tokenized, tokens_positive,cat_list,caption):
     """construct a map such that positive_map[i,j] = True iff box i is associated to token j"""

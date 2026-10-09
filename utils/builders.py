@@ -11,7 +11,7 @@ from groundingdino.models.GroundingDINO.groundingdino import GroundingDINO, Post
 from groundingdino.models.GroundingDINO.matcher import build_matcher
 from groundingdino.models.GroundingDINO.transformer import build_transformer
 from utils.transforms import make_coco_transforms
-from utils.transporter import SimpleTransporter, RotationTransporter, Analogy, RotationTransporterGemini, AnalogyFull, MergedTransporter
+from utils.transporter import SimpleTransporter, RotationTransporter, Analogy, MergedTransporter
 
 def build_dataset(args, img_set='train', type='coco', add_split=True):
     img_folder = args.root
@@ -23,7 +23,6 @@ def build_dataset(args, img_set='train', type='coco', add_split=True):
     transforms = make_coco_transforms(
         image_set=img_set,
         fix_size=args.fix_size,
-        strong_aug=False,
         args=args
     )
 
@@ -52,14 +51,12 @@ def build_uda_dataset(args):
         transform_train = make_coco_transforms(
             image_set='train',
             fix_size=args.fix_size,
-            strong_aug=False,
             args=args
         )
     
     transform_val = make_coco_transforms(
         image_set='val',
         fix_size=args.fix_size,
-        strong_aug=False,
         args=args
     )
     
@@ -200,17 +197,11 @@ def build_transporter(
     if transporter_type == 'simple':
         return SimpleTransporter(w_source=w_source, w_target=w_target)
     elif transporter_type == 'abra':
-        calib_exp = str(args.source_class).rsplit('/')[-2].split('_')[0] if args.calibration_classes is not None else None
         return RotationTransporter(
             w_source=w_source,
             w_target=w_target,
             mask=mask,
-            weighted=args.abra_weighted,
-            calibration_classes=args.calibration_classes,
-            calib_exp=calib_exp
-        )           
-    elif transporter_type == 'abrag':
-        return RotationTransporterGemini(w_source=w_source, w_target=w_target, mask=mask)
+        )
     elif transporter_type == 'analogy':
         return Analogy(
             source_domain=analogy_source,
@@ -218,15 +209,7 @@ def build_transporter(
             source_class=w_source,
             pretrain=pretrain
         )
-    elif transporter_type == 'analogy_full':
-        return AnalogyFull(
-            source_domain=analogy_source,
-            target_domain=analogy_target,
-            source_class=w_source,
-            pretrain=pretrain
-        )
     elif transporter_type == 'merged':
-        calib_exp = str(args.source_class).rsplit('/')[-2].split('_')[0] if args.calibration_classes is not None else None
         return MergedTransporter(
             w_source=w_source,
             w_target=w_target,
@@ -234,9 +217,6 @@ def build_transporter(
             target_domain=analogy_target,
             pretrain=pretrain,
             alpha=args.merged_alpha,
-            weighted=args.abra_weighted,
-            calibration_classes=args.calibration_classes,
-            calib_exp=calib_exp,
             mask=args.abra_mask,
             alpha_estimate=args.alpha_estimate,
         )

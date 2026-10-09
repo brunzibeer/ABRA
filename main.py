@@ -16,7 +16,6 @@ from utils import binary_to_boolean_type
 from utils.builders import *
 from utils.parameters import get_trainable_parameters, get_trainable_keys, get_target_modules_list, create_and_replace_modules
 from utils.checkpoints import save_checkpoint
-from utils.confmix_engine import run_confmix
 from utils.fda_engine import run_fda
 from utils.alpha_search import run_alpha_search
 from utils.compute_mse import compute_mse
@@ -43,21 +42,16 @@ def get_parser():
     parser.add_argument('--model_cfg', type=Path, required=True, help='path to model config file')
     parser.add_argument('--weights', type=Path, default=None, required=False, help='path to model weights')
     parser.add_argument('--finetuning', type=Path, default=None, help='path to the finetuned weights of the model')
-    parser.add_argument('--resume', type=binary_to_boolean_type, default=False, help='resume from previous checkpoint (only for training)')
-    parser.add_argument('--trainable', type=str, default='encoder_attn', choices=['encoder', 'decoder', 'encoder_attn', 'decoder_attn', 'attn', 'all', 'frcnn'], help='parameters to train')
+    parser.add_argument('--trainable', type=str, default='encoder_attn', choices=['encoder', 'decoder', 'encoder_attn', 'decoder_attn', 'attn', 'all'], help='parameters to train')
     parser.add_argument('--param_type', type=str, default='default', choices=['all', 'default', 'adapt'])
-    parser.add_argument('--frcnn', type=binary_to_boolean_type, default=False, help='Use FRCNN instead of G-Dino')
-    parser.add_argument('--frcnn_classes', type=int, default=None, help='Number of classes for FRCNN')
 
     # Experiments args
     parser.add_argument('--device', type=str, default='cuda', help='device to use for experiment')
     parser.add_argument('--exp_name', type=str, required=True, help='name of the experiment')
     parser.add_argument('--test', type=binary_to_boolean_type, default=False, help='if True, perform evaluation only')
     parser.add_argument('--test_period', type=int, default=1, help='evaluation period (in epochs)')
-    parser.add_argument('--hierarchical_training', type=binary_to_boolean_type, default=False, help='Use hierarchical training or not')
     parser.add_argument('--class_loss_w', type=float, default=1.0, help='Weight for loss on classes')
     parser.add_argument('--object_loss_w', type=float, default=1.0, help='Weight for loss on object')
-    parser.add_argument('--log_seen_classes', type=str, default=[], nargs='+', help='Separate loggin for seen classes')
     parser.add_argument('--save_coco_format', type=Path, default=None, help='If provided, save zero shot prediction as coco format')
     parser.add_argument('--zs_th', type=float, default=0.3, help='Threshold for saving zero-shot prediction')
     
@@ -81,15 +75,13 @@ def get_parser():
     
     # PEFT
     parser.add_argument('--svft', type=binary_to_boolean_type, default=False, help='use svft as PEFT method')
-    parser.add_argument('--svft_pattern', type=str, default='banded', choices=['banded', 'random'], help='')
+    parser.add_argument('--svft_pattern', type=str, default='banded', choices=['banded'], help='SVFT sparsity pattern')
     parser.add_argument('--svft_diag', type=int, default=2, help='parameter to enlarge or reduce the banded pattern')
     parser.add_argument('--svft_ckpt', type=binary_to_boolean_type, default=False, help='define if the finetuning checkpoint has to be loaded after svft')
 
     # ABRA
-    parser.add_argument('--transporter', type=str, default=None, choices=['simple', 'abra', 'analogy', 'abraplus', 'abrag', 'analogy_full', 'merged'], help='transport method to use')
+    parser.add_argument('--transporter', type=str, default=None, choices=['simple', 'abra', 'analogy', 'merged'], help='transport method to use')
     parser.add_argument('--abra_mask', type=str, default=None, choices=['plain', 'banded'], help='mask the rotation output for numerical stability')
-    parser.add_argument('--abra_weighted', type=binary_to_boolean_type, default=False, help='Use weighted Procrustes in ABRA (focus on large residual values)')
-    parser.add_argument('--calibration_classes', type=str, nargs='+', default=None, help='classes to use for calibration in ABRA (only for weighted version)')
     parser.add_argument('--source_class', type=Path, default=None, help='path to the class checkpoint') # Also for param delta
     parser.add_argument('--source_domain', type=Path, default=None, help='source domain to use')
     parser.add_argument('--target_domain', type=Path, default=None, help='target domain to use')
@@ -106,12 +98,12 @@ def get_parser():
     parser.add_argument('--alpha_estimate', type=binary_to_boolean_type, default=False, help='Whether to estimate a good alpha from the eigenvalues of the transported rotation matrix instead of performing a search')
     
     # UDA
-    parser.add_argument('--uda', type=str, default=None, help='apply UDA')
-    parser.add_argument('--source_root', type=Path, default=None, help='path to source dataset root for confmix')
-    parser.add_argument('--target_root', type=Path, default=None, help='path to target dataset root for confmix')
-    parser.add_argument('--source_train_annotations', type=Path, default=None, help='path to source training annotations for confmix')
-    parser.add_argument('--target_train_annotations', type=Path, default=None, help='path to target training annotations for confmix')
-    parser.add_argument('--target_test_annotations', type=Path, default=None, help='path to target validation annotations for confmix')
+    parser.add_argument('--uda', type=str, default=None, choices=['fda'], help='apply UDA baseline')
+    parser.add_argument('--source_root', type=Path, default=None, help='path to source dataset root for UDA')
+    parser.add_argument('--target_root', type=Path, default=None, help='path to target dataset root for UDA')
+    parser.add_argument('--source_train_annotations', type=Path, default=None, help='path to source training annotations for UDA')
+    parser.add_argument('--target_train_annotations', type=Path, default=None, help='path to target training annotations for UDA')
+    parser.add_argument('--target_test_annotations', type=Path, default=None, help='path to target validation annotations for UDA')
     parser.add_argument('--fda_ent', type=float, default=0.0, help='Apply entropy loss on target domain for FDA')
     parser.add_argument('--fda_lb', type=float, default=0.01, help='L parameter for FDA')
     parser.add_argument('--fda_ita', type=float, default=2.0, help='ITA parameter for FDA')
@@ -126,19 +118,14 @@ def get_parser():
     # Wandb related args
     parser.add_argument('--wandb_entity', type=str, default=None, help='wandb entity name')
     parser.add_argument('--wandb_project', type=str, default=None, help='wandb project name')
-    
-    # Deprecated
-    parser.add_argument('--dynamic_prompts', type=binary_to_boolean_type, default=False, help='Use dynamic, GT based prompts for each image')
-    
+
+
     return parser
 
 
 def main(args):
     if not torch.cuda.is_available() and 'cuda' in args.device:
         exit("CUDA is not available, please check your device argument or your CUDA installation.")
-    if args.resume:
-        assert not args.test, "Resume can be used only for training"
-        
     device = torch.device(args.device)
 
     # 1 Load Dataset
@@ -191,11 +178,10 @@ def main(args):
     criterion = build_loss(args)
     
     # 3 Load weights
-    if not args.frcnn:
-        pretrain = torch.load(args.weights, map_location='cpu')['model']
-        pretrain = utils.clean_state_dict(pretrain) # Used to remove 'module' from name
-        load_output = model.load_state_dict(pretrain, strict=False)
-        print(load_output)
+    pretrain = torch.load(args.weights, map_location='cpu')['model']
+    pretrain = utils.clean_state_dict(pretrain) # Used to remove 'module' from name
+    load_output = model.load_state_dict(pretrain, strict=False)
+    print(load_output)
     
     # 4 Load finetuning
     if args.finetuning is not None and not args.svft_ckpt:
@@ -262,16 +248,7 @@ def main(args):
     
     # 8 Train
     if args.uda and not args.test:
-        if args.uda == 'confmix':
-            return run_confmix(
-                args=args,
-                model=model,
-                optimizer=optimizer,
-                pp=post_proc,
-                device=device,
-                criterion=criterion
-            )
-        elif args.uda == 'fda':
+        if args.uda == 'fda':
             return run_fda(
                 args=args,
                 model=model,

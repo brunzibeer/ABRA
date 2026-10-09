@@ -61,9 +61,8 @@ def train_one_epoch(
             # We assume gradients accumulate by default  in PyTorch
             (losses_specific * CLASS_LOSS_WEIGHT).backward()
 
-        # Check flag to enable this feature (add --hierarchical_training to your args)
         losses_generic_item = 0.0
-        if getattr(args, 'hierarchical_training', False) or getattr(args, 'objectify', False):
+        if args.objectify:
             
             # A. Construct Generic Prompt
             # We treat the entire batch as having the single prompt "object ."
@@ -114,7 +113,7 @@ def train_one_epoch(
                 'TRAIN/total_loss': total_loss_item,
                 'TRAIN/loss_specific': losses_specific.item()
             }
-            if getattr(args, 'hierarchical_training', False):
+            if args.objectify:
                 log_dict['TRAIN/loss_generic'] = losses_generic_item
             
             wandb.log(log_dict, step=step_int)
@@ -232,7 +231,7 @@ def evaluate(
     if coco_evaluator is not None:
         coco_evaluator.synchronize_between_processes()
         coco_evaluator.accumulate()
-        coco_evaluator.summarize(seen_classes=args.log_seen_classes)
+        coco_evaluator.summarize()
         
     if getattr(args, 'save_coco_format', None):
         if not args.save_coco_format.endswith('.json'):

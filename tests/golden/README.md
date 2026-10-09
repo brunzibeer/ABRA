@@ -17,8 +17,17 @@ none; banded and task addition only with `--with_banded_ta`) and Param Δ (run t
 class, plus loss traces of two 5-step `--debug` training runs (domain and class expert) with seed 0. Optional:
 `--alpha_search` adds ABRA-α (selected on the test split, i.e. the current oracle behaviour).
 
+**Environment matters.** References must be compared in the pinned environment (torch 2.1.0, numpy 1.24,
+transformers 4.28; `uv sync`). SVD results depend on the torch/LAPACK build: with torch 2.2 instead of 2.1,
+ABRA without mask and task addition still agree to ~1e-5, but banded/plain masks differ up to ~1e-3 (near-degenerate
+singular vectors) and Param Δ changes completely (sign-dependent).
+
+`cpu_forward_golden.json` (from `cpu_forward_golden.py --write`, CPU only, ~16 min) runs `main.py` on synthetic images
+for 8 settings (6 evaluation, 2 two-step trainings) with base GDINO + domain/class experts, and fingerprints the raw
+outputs and loss traces. Without `--write` it compares against the reference and exits 1 on any difference.
+
 Helpers:
-- `make_image_subset.py`: copies only the ~1,100 images these runs read (362 foggy val, 362 normal val, the
+- `make_image_subset.py`: copies only the ~1,000 images these runs read (362 foggy val, 362 normal val, the
   training images of one class) from full Cityscapes / Foggy Cityscapes, so a small server needs ~2 GB instead of ~40 GB.
 - `check_env.py`: one-minute OK/FAIL check of GPU, package versions, compiled deformable attention (compared
   with the PyTorch reference), repo imports, BERT availability, weights and images. Run it first.
