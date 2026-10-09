@@ -1,7 +1,5 @@
-# conda/pip install; torch, torchvision, torch-scatter and torch-sparse are installed first (see README)
+# conda/pip install; torch and torchvision are installed first (see README)
 scipy
-addict
-yapf==0.40.1
 timm
 transformers==4.28.0
 numpy==1.24.0
@@ -12,3 +10,5 @@ pyyaml>3.10
 jsonlines
 tabulate
 wandb
+safetensors
+pytest

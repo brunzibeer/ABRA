@@ -22,9 +22,12 @@ transformers 4.28; `uv sync`). SVD results depend on the torch/LAPACK build: wit
 ABRA without mask and task addition still agree to ~1e-5, but banded/plain masks differ up to ~1e-3 (near-degenerate
 singular vectors) and Param Δ changes completely (sign-dependent).
 
-`cpu_forward_golden.json` (from `cpu_forward_golden.py --write`, CPU only, ~16 min) runs `main.py` on synthetic images
-for 8 settings (6 evaluation, 2 two-step trainings) with base GDINO + domain/class experts, and fingerprints the raw
-outputs and loss traces. Without `--write` it compares against the reference and exits 1 on any difference.
+`cpu_forward_golden.json` holds the outputs of the ORIGINAL `main.py` (commit 6a34a0d, `--cli old`) on synthetic images
+for 8 settings (6 evaluations, 2 two-step trainings): per-query probes of the raw outputs, the sorted top-100 scores and
+loss traces. `cpu_forward_golden.py` runs the same settings through the `abra` CLI on CPU (~16 min) and compares.
+Settings listed in `--allow_close` may differ per query if their sorted top-100 scores match within `--score_tol`;
+see `docs/MIGRATION.md` §3.1 for why the transport settings are only close. `check_gpu_new_cli.py` runs the new CLI
+on the GPU server and compares real AP with `gpu_golden.json` (tolerance 0.05).
 
 Helpers:
 - `make_image_subset.py`: copies only the ~1,000 images these runs read (362 foggy val, 362 normal val, the

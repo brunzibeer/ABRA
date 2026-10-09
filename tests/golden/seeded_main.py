@@ -1,4 +1,5 @@
-"""Run the unmodified ``main.py`` with global seeding and a per-step loss trace.
+"""[Historical] Drives the ORIGINAL main.py: run it from commit 4c07a60 (original code + golden scripts).
+Run the unmodified ``main.py`` with global seeding and a per-step loss trace.
 
 ``main.py`` has no seeding and logs training losses only to wandb. This wrapper seeds python/numpy/torch,
 replaces the ``wandb`` handle *inside engine.py only* with a recorder that writes every logged dict to

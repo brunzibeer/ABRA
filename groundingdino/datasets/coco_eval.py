@@ -6,7 +6,6 @@ Mostly copy-paste from https://github.com/pytorch/vision/blob/edfd5a7/references
 The difference is that there is less copy-pasting from pycocotools
 in the end of the file, as python3 can suppress prints with contextlib
 """
-import wandb
 import os
 import contextlib
 import copy
@@ -70,6 +69,8 @@ class CocoEvaluator(object):
             coco_eval.accumulate()
 
     def summarize(self):
+        """Print the COCO summary and per-category AP; per-category rows are kept in ``self.per_category``."""
+        self.per_category = {}
         for iou_type, coco_eval in self.coco_eval.items():
             print("IoU metric: {}".format(iou_type))
             coco_eval.summarize()
@@ -121,15 +122,7 @@ class CocoEvaluator(object):
                 floatfmt=".3f",
             )
             print(table_str)
-            
-            if wandb.run is not None:
-                wandb.log({
-                    "EVAL/per_class_AP": wandb.Table(
-                        data=results_per_category,
-                        columns=["category", "AP", "AP50", "AP75"],
-                    )
-                })
-                wandb.log({"EVAL/AP": stats[0] * 100})
+            self.per_category[iou_type] = results_per_category
 
     def prepare(self, predictions, iou_type):
         if iou_type == "bbox":

@@ -52,7 +52,8 @@ def deform_op():
 
 
 def repo_imports():
-    import main  # noqa: F401  (imports the whole pipeline, incl. torch_sparse and pycocotools)
+    import abra.commands  # noqa: F401  (imports the whole pipeline, incl. pycocotools)
+    import abra.baselines.fda  # noqa: F401
     return None
 
 
@@ -67,7 +68,7 @@ def main():
     check("GPU", gpu)
     check("package versions", versions)
     check("deformable attention CUDA op", deform_op)
-    check("repo imports (main.py)", repo_imports)
+    check("repo imports (abra)", repo_imports)
     check("BERT tokenizer/model", bert)
     print("\nall checks passed" if not failures else f"\n{len(failures)} check(s) failed: {', '.join(failures)}")
     sys.exit(1 if failures else 0)

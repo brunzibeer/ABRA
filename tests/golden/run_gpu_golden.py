@@ -1,4 +1,5 @@
-"""Phase-0 reference for the refactor: detection results of the *current* code (needs a CUDA GPU).
+"""[Historical] Drives the ORIGINAL main.py: run it from commit 4c07a60 (original code + golden scripts).
+Phase-0 reference for the refactor: detection results of the *current* code (needs a CUDA GPU).
 
 Runs the unmodified ``main.py`` (through ``seeded_main.py``) for a set of evaluation settings per class
 and two short training smoke runs, and collects AP / AP50 / AP75 plus loss traces into one JSON file.

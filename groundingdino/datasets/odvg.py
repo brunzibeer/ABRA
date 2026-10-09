@@ -23,7 +23,6 @@ class ODVGDataset(VisionDataset):
 
     def __init__(
         self,
-        args,
         root: str,
         anno: str,
         label_map_anno: str = None,
@@ -33,7 +32,6 @@ class ODVGDataset(VisionDataset):
         transforms: Optional[Callable] = None
     ) -> None:
         super().__init__(root, transforms, transform, target_transform)
-        self.args = args
         self.root = root
         self.dataset_mode = "OD" if label_map_anno else "VG"
         self.max_labels = max_labels
@@ -41,11 +39,6 @@ class ODVGDataset(VisionDataset):
             self.load_label_map(label_map_anno)
         self._load_metas(anno)
         self.get_dataset_info()
-        
-        if args.uda == 'fda':
-            self.resize_size = (1024, 512)
-            self.crop_size = (1024, 512)
-            self.mean = np.array((0.0, 0.0, 0.0), dtype=np.float32)
 
     def load_label_map(self, label_map_anno):
         with open(label_map_anno, 'r') as file:
@@ -62,190 +55,79 @@ class ODVGDataset(VisionDataset):
             print(f"  == total labels: {len(self.label_map)}")
 
     def __getitem__(self, index: int):
-        if not self.args.uda == 'fda':
-            meta = self.metas[index]
-            rel_path = meta["filename"]
+        meta = self.metas[index]
+        rel_path = meta["filename"]
 
-            abs_path = os.path.join(self.root, rel_path)
-            if not os.path.exists(abs_path):
-                raise FileNotFoundError(f"{abs_path} not found.")
-            image = Image.open(abs_path).convert('RGB')
-            w, h = image.size
-            if self.dataset_mode == "OD":
-                anno = meta["detection"]
-                instances = [obj for obj in anno["instances"]]
-                boxes = [obj["bbox"] for obj in instances]
-            
-                # generate vg_labels
-                # pos bbox labels
-                ori_classes = [str(obj["label"]) for obj in instances]
-                pos_labels = set(ori_classes)
-                
-                # neg bbox labels
-                neg_labels = list(self.label_index.difference(pos_labels))
-
-                # Labels that are not present in the image
-                vg_labels = list(pos_labels)
-                num_to_add = min(len(neg_labels), self.max_labels-len(pos_labels))
-                if num_to_add > 0:
-                    vg_labels.extend(random.sample(neg_labels, num_to_add))
-                
-                # shuffle
-                for i in range(len(vg_labels)-1, 0, -1):
-                    j = random.randint(0, i)
-                    vg_labels[i], vg_labels[j] = vg_labels[j], vg_labels[i]
-
-                caption_list = [self.label_map[lb] for lb in vg_labels]
-                caption_dict = {item:index for index, item in enumerate(caption_list)}
-
-                caption = ' . '.join(caption_list) + ' .'
-                classes = [caption_dict[self.label_map[str(obj["label"])]] for obj in instances]
-                    
-                boxes = torch.as_tensor(boxes, dtype=torch.float32).reshape(-1, 4)
-                classes = torch.tensor(classes, dtype=torch.int64)
-            elif self.dataset_mode == "VG":
-                anno = meta["grounding"]
-                instances = [obj for obj in anno["regions"]]
-                boxes = [obj["bbox"] for obj in instances]
-                caption_list = [obj["phrase"] for obj in instances]
-                c = list(zip(boxes, caption_list))
-                random.shuffle(c)
-                boxes[:], caption_list[:] = zip(*c)
-                uni_caption_list  = list(set(caption_list))
-                label_map = {}
-                for idx in range(len(uni_caption_list)):
-                    label_map[uni_caption_list[idx]] = idx
-                classes = [label_map[cap] for cap in caption_list]
-                caption = ' . '.join(uni_caption_list) + ' .'
-                boxes = torch.as_tensor(boxes, dtype=torch.float32).reshape(-1, 4)
-                classes = torch.tensor(classes, dtype=torch.int64)
-                caption_list = uni_caption_list
-                
-                
-            target = {}
-            original_size = torch.as_tensor([int(h), int(w)])
-            target["size"] = torch.as_tensor([int(h), int(w)])
-            target["cap_list"] = caption_list
-            target["caption"] = caption
-            target["boxes"] = boxes
-            target["labels"] = classes
-
-            if self.transforms is not None:
-                image, target = self.transforms(image, target)
-            
-            target["original_size"] = original_size
-
-            return image, target
-        else:
-            # FDA
-            meta = self.metas[index]
-            rel_path = meta["filename"]
-
-            abs_path = os.path.join(self.root, rel_path)
-            if not os.path.exists(abs_path):
-                raise FileNotFoundError(f"{abs_path} not found.")
-            
-            # 1. Load original RGB image
-            image = Image.open(abs_path).convert('RGB')
-            orig_w, orig_h = image.size
-            
-            # 2. Extract original boxes
+        abs_path = os.path.join(self.root, rel_path)
+        if not os.path.exists(abs_path):
+            raise FileNotFoundError(f"{abs_path} not found.")
+        image = Image.open(abs_path).convert('RGB')
+        w, h = image.size
+        if self.dataset_mode == "OD":
             anno = meta["detection"]
             instances = [obj for obj in anno["instances"]]
             boxes = [obj["bbox"] for obj in instances]
-            boxes = torch.as_tensor(boxes, dtype=torch.float32).reshape(-1, 4)
-            
-            # 3. Text & Caption Logic (Untouched)
+        
+            # generate vg_labels
+            # pos bbox labels
             ori_classes = [str(obj["label"]) for obj in instances]
             pos_labels = set(ori_classes)
+            
+            # neg bbox labels
             neg_labels = list(self.label_index.difference(pos_labels))
 
+            # Labels that are not present in the image
             vg_labels = list(pos_labels)
             num_to_add = min(len(neg_labels), self.max_labels-len(pos_labels))
             if num_to_add > 0:
                 vg_labels.extend(random.sample(neg_labels, num_to_add))
             
+            # shuffle
             for i in range(len(vg_labels)-1, 0, -1):
                 j = random.randint(0, i)
                 vg_labels[i], vg_labels[j] = vg_labels[j], vg_labels[i]
 
             caption_list = [self.label_map[lb] for lb in vg_labels]
             caption_dict = {item:index for index, item in enumerate(caption_list)}
+
             caption = ' . '.join(caption_list) + ' .'
             classes = [caption_dict[self.label_map[str(obj["label"])]] for obj in instances]
+                
+            boxes = torch.as_tensor(boxes, dtype=torch.float32).reshape(-1, 4)
             classes = torch.tensor(classes, dtype=torch.int64)
-
-            # ==========================================
-            # 4. SPATIAL TRANSFORMS (MANUAL)
-            # ==========================================
+        elif self.dataset_mode == "VG":
+            anno = meta["grounding"]
+            instances = [obj for obj in anno["regions"]]
+            boxes = [obj["bbox"] for obj in instances]
+            caption_list = [obj["phrase"] for obj in instances]
+            c = list(zip(boxes, caption_list))
+            random.shuffle(c)
+            boxes[:], caption_list[:] = zip(*c)
+            uni_caption_list  = list(set(caption_list))
+            label_map = {}
+            for idx in range(len(uni_caption_list)):
+                label_map[uni_caption_list[idx]] = idx
+            classes = [label_map[cap] for cap in caption_list]
+            caption = ' . '.join(uni_caption_list) + ' .'
+            boxes = torch.as_tensor(boxes, dtype=torch.float32).reshape(-1, 4)
+            classes = torch.tensor(classes, dtype=torch.int64)
+            caption_list = uni_caption_list
             
-            # --- A. Resize Image and Boxes ---
-            image = image.resize(self.resize_size, Image.BICUBIC)
             
-            ratio_width = self.resize_size[0] / orig_w
-            ratio_height = self.resize_size[1] / orig_h
-            
-            if boxes.shape[0] > 0:
-                boxes[:, [0, 2]] = boxes[:, [0, 2]] * ratio_width
-                boxes[:, [1, 3]] = boxes[:, [1, 3]] * ratio_height
+        target = {}
+        original_size = torch.as_tensor([int(h), int(w)])
+        target["size"] = torch.as_tensor([int(h), int(w)])
+        target["cap_list"] = caption_list
+        target["caption"] = caption
+        target["boxes"] = boxes
+        target["labels"] = classes
 
-            # --- B. Calculate Crop Coordinates ---
-            left = self.resize_size[0] - self.crop_size[0]
-            upper = self.resize_size[1] - self.crop_size[1]
+        if self.transforms is not None:
+            image, target = self.transforms(image, target)
+        
+        target["original_size"] = original_size
 
-            left = np.random.randint(0, high=left) if left > 0 else 0
-            upper = np.random.randint(0, high=upper) if upper > 0 else 0
-            right = left + self.crop_size[0]
-            lower = upper + self.crop_size[1]
-
-            # --- C. Apply Crop to Image ---
-            image = image.crop((left, upper, right, lower))
-            
-            # --- D. Apply Crop to Boxes & Clamp ---
-            if boxes.shape[0] > 0:
-                boxes[:, [0, 2]] = boxes[:, [0, 2]] - left
-                boxes[:, [1, 3]] = boxes[:, [1, 3]] - upper
-                boxes[:, [0, 2]] = boxes[:, [0, 2]].clamp(0, self.crop_size[0])
-                boxes[:, [1, 3]] = boxes[:, [1, 3]].clamp(0, self.crop_size[1])
-
-                # --- E. Convert XYXY to CXCYWH (Normalized 0.0 to 1.0) ---
-                cx = (boxes[:, 0] + boxes[:, 2]) / 2.0
-                cy = (boxes[:, 1] + boxes[:, 3]) / 2.0
-                bw = boxes[:, 2] - boxes[:, 0]
-                bh = boxes[:, 3] - boxes[:, 1]
-                
-                cx = cx / self.crop_size[0]
-                cy = cy / self.crop_size[1]
-                bw = bw / self.crop_size[0]
-                bh = bh / self.crop_size[1]
-                
-                boxes = torch.stack([cx, cy, bw, bh], dim=1)
-                
-                # --- F. Safely filter out boxes cut away by the crop ---
-                # Keeps only boxes with an area strictly greater than 0
-                keep_mask = (bw > 0.0) & (bh > 0.0)
-                boxes = boxes[keep_mask]
-                classes = classes[keep_mask]
-            # ==========================================
-
-            # 5. Final Image Tensor Conversion 
-            # Output shape: [C, H, W], Value Range: [0.0, 255.0] (Ready for FDA!)
-            image = np.asarray(image, np.float32)
-            image = image.transpose((2, 0, 1))
-            image = torch.from_numpy(image.copy()).float()
-            
-            # 6. Build Target Dictionary
-            target = {}
-            # Grounding DINO expects [height, width] for size targets
-            target["size"] = torch.as_tensor([int(self.crop_size[1]), int(self.crop_size[0])]) 
-            target["original_size"] = torch.as_tensor([int(orig_h), int(orig_w)])
-            target["cap_list"] = caption_list
-            target["caption"] = caption
-            target["boxes"] = boxes
-            target["labels"] = classes
-
-            return image, target
-    
+        return image, target
 
     def __len__(self) -> int:
         return len(self.metas)

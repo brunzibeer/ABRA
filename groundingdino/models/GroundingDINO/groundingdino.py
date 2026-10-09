@@ -705,6 +705,8 @@ class PostProcess(nn.Module):
             coco = COCO(args.coco_val_path)
             category_dict = coco.loadCats(coco.getCatIds())
             cat_list = [item['name'] for item in category_dict]
+            if getattr(args, 'eval_classes', None):  # prompt restricted to these classes (abra eval --eval_classes)
+                cat_list = [c for c in cat_list if c in args.eval_classes]
         else:
             cat_list=args.label_list
         caption = " . ".join(cat_list) + ' .'

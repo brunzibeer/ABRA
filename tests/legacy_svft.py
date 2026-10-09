@@ -1,6 +1,4 @@
-import time
-import math
-
+"""Original SVFT layer (tag ``official``), kept unchanged as the reference for tests/test_svft.py."""
 import torch
 import numpy as np
 from tqdm import tqdm

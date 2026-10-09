@@ -31,7 +31,6 @@ On Linux, uv installs the CUDA 11.8 PyTorch wheels. On other platforms, check th
 conda create -n abra python=3.10
 conda activate abra
 pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
-pip install torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.1.0+cu118.html
 pip install -r requirements.txt
 ```
 
@@ -81,111 +80,144 @@ datasets/
         └── experts/<class>.json
 ```
 
-`main.py` appends `train/` or `val/` to `--root` automatically when the path contains `cityscapes`, `AODRaw` or `bdd`; otherwise pass `--add_split 1`.
+`train/` or `val/` is appended to `--root` automatically when the path contains `cityscapes`, `AODRaw` or `bdd`; otherwise pass `--add_split 1`.
 
-All commands below are run from the repository root. `--exp_name` is required; outputs (checkpoints, visualizations) go to `--output_root`.
+---
+
+## ⌨️ Command line
+
+Everything runs through one entry point, from the repository root:
+
+```bash
+python -m abra <command> [options]      # python -m abra <command> -h lists the options
+```
+
+| Command | What it does | Main output |
+| --- | --- | --- |
+| `train-domain` | Domain expert (Objectification) | `best.safetensors`, `last.safetensors` |
+| `train-expert` | Class expert: SVFT on a domain expert | class residual `best.safetensors` (~0.3 MB) |
+| `eval` | Zero-shot, a domain expert, or a transported class residual | `results.json` |
+| `transport` | Transport a residual offline (CPU, seconds, no data) | dense residual `.safetensors` |
+| `migrate` | Convert original `.pth` checkpoints to the new formats | `.safetensors` |
+| `fda` | FDA baseline (Table 2) | `best.safetensors` |
+| `diagnose` | Weight-space diagnostics D1–D3, per-layer α fitted on available classes | report `.json`, `.alpha.json` |
+| `report` | Collect all `results.json` into one table | markdown / csv |
+
+Every run writes to `--output_root` (required, together with `--exp_name`):
+
+- `run.log`: the complete console output;
+- `metrics.jsonl`: every logged loss / AP as one JSON line;
+- `config.json`: the resolved arguments, git commit and environment.
+
+Metrics are mirrored to wandb only if you pass `--wandb_project` (and optionally `--wandb_entity`). Runs are seeded with `--seed` (default 0).
 
 ---
 
 ## 🏋️‍♂️ Domain Expert Training
 
-The first step of the ABRA pipeline is **Objectification**. We train Domain Experts on the source and target domains to learn class-agnostic object localization for each condition (every box is labelled `object`).
-
-### 1. Source Domain Expert (Cityscapes)
+The first step of the ABRA pipeline is **Objectification**: Domain Experts are trained on the source and target domains with class-agnostic boxes (every box is an `object`), to learn object localization for each condition.
 
 ```bash
-python main.py \
-  --exp_name dom_normal \
-  --output_root outputs/domains/cityscapes/normal \
+python -m abra train-domain \
+  --exp_name dom_normal --output_root outputs/domains/cityscapes/normal \
+  --weights weights/groundingdino_swint_ogc.pth \
   --root datasets/cityscapes/normal/images \
   --train_annotations datasets/cityscapes/normal/annotations/domains/annotations_train_domain.jsonl \
   --test_annotations datasets/cityscapes/normal/annotations/annotations_val.json \
   --label_map datasets/cityscapes/label_maps/top_3.json \
-  --objectify 1 \
-  --model_cfg groundingdino/config/cfg_odvg.py \
-  --weights weights/groundingdino_swint_ogc.pth \
-  --trainable encoder_attn --param_type default \
-  --epochs 10 --batch_size 2 --accumulation_steps 1 \
+  --trainable encoder_attn --epochs 10 --batch_size 2 \
   --optim adamw --lr 1e-4 --weight_decay 1e-4 --scheduler multi --step_milestones 7 9 \
   --lp_names ref_point_head sampling_offsets --lp_lr 1e-5
 ```
 
-### 2. Target Domain Expert (Foggy Cityscapes)
-
-Same command, with the target-domain data:
-
-```bash
-python main.py \
-  --exp_name dom_fog \
-  --output_root outputs/domains/cityscapes/fog \
-  --root datasets/cityscapes/fog/images \
-  --train_annotations datasets/cityscapes/fog/annotations/domains/annotations_train_domain.jsonl \
-  --test_annotations datasets/cityscapes/fog/annotations/annotations_val.json \
-  --label_map datasets/cityscapes/label_maps/top_3.json \
-  --objectify 1 \
-  --model_cfg groundingdino/config/cfg_odvg.py \
-  --weights weights/groundingdino_swint_ogc.pth \
-  --trainable encoder_attn --param_type default \
-  --epochs 10 --batch_size 2 --accumulation_steps 1 \
-  --optim adamw --lr 1e-4 --weight_decay 1e-4 --scheduler multi --step_milestones 7 9 \
-  --lp_names ref_point_head sampling_offsets --lp_lr 1e-5
-```
+For the target domain expert (Foggy Cityscapes), use the same command with `fog` instead of `normal` in `--exp_name`, `--output_root`, `--root` and the annotation paths.
 
 ---
 
 ## 🎯 Class Expert Training
 
-We fine-tune the Source Domain Expert on one source-domain class with **Singular Value Fine-Tuning (SVFT)**, which isolates the class-specific residual (e.g. *bus*):
+The Source Domain Expert is fine-tuned on one source-domain class with **Singular Value Fine-Tuning (SVFT)**, which isolates the class-specific residual (e.g. *bus*). The residual is stored in the singular basis of its parent domain expert (only the SVFT band is saved), together with the parent's hash and a checksum.
 
 ```bash
-python main.py \
-  --exp_name exp1_bus \
-  --output_root outputs/experts/cityscapes/normal/exp1_bus \
+python -m abra train-expert \
+  --exp_name exp1_bus --output_root outputs/experts/cityscapes/normal/bus \
+  --weights weights/groundingdino_swint_ogc.pth \
+  --domain outputs/domains/cityscapes/normal/best.safetensors \
   --root datasets/cityscapes/normal/images \
   --train_annotations datasets/cityscapes/normal/annotations/experts/bus/annotations_train.jsonl \
   --test_annotations datasets/cityscapes/normal/annotations/experts/bus/annotations_val.json \
   --label_map datasets/cityscapes/label_maps/experts/bus.json \
-  --model_cfg groundingdino/config/cfg_odvg.py \
-  --weights weights/groundingdino_swint_ogc.pth \
-  --finetuning outputs/domains/cityscapes/normal/best.pth \
-  --trainable encoder_attn --param_type default \
-  --epochs 12 --batch_size 4 --accumulation_steps 1 \
+  --svft_diag 2 --trainable encoder_attn --epochs 12 --batch_size 4 \
   --optim adamw --lr 1e-2 --weight_decay 0.0 --scheduler multi --step_milestones 7 9 \
-  --lp_names ref_point_head sampling_offsets --lp_lr 1e-3 \
-  --svft 1 --svft_pattern banded --svft_diag 2
+  --lp_names ref_point_head sampling_offsets --lp_lr 1e-3
 ```
 
-Repeat for the other classes by changing the class name in `--exp_name`, `--output_root`, the annotation paths and `--label_map`.
+The same command with `--domain` set to the *target* domain expert and target-domain data trains the target-domain fine-tuning reference (or residuals of available target classes).
 
 ---
 
 ## 🚀 Method Evaluation
 
-ABRA transports the source class residual onto the **target** domain expert (`--finetuning`) and evaluates on the target domain, without any target-domain labels of that class:
+ABRA transports the source class residual onto the **target** domain expert (`--domain`) and evaluates on the target domain, without any target-domain labels of that class:
 
 ```bash
-python main.py \
-  --exp_name abra_bus_fog \
-  --output_root outputs/eval/abra/bus \
-  --root datasets/cityscapes/fog/images \
-  --test_annotations datasets/cityscapes/fog/annotations/experts/bus/annotations_val.json \
-  --model_cfg groundingdino/config/cfg_odvg.py \
+python -m abra eval \
+  --exp_name abra_bus_fog --output_root outputs/eval/abra/bus \
   --weights weights/groundingdino_swint_ogc.pth \
-  --finetuning outputs/domains/cityscapes/fog/best.pth \
-  --source_class outputs/experts/cityscapes/normal/exp1_bus/best.pth \
-  --svft 1 --svft_pattern banded --svft_diag 2 \
-  --transporter abra \
-  --test 1
+  --domain outputs/domains/cityscapes/fog/best.safetensors \
+  --residual outputs/experts/cityscapes/normal/bus/best.safetensors \
+  --method abra \
+  --root datasets/cityscapes/fog/images \
+  --test_annotations datasets/cityscapes/fog/annotations/experts/bus/annotations_val.json
 ```
 
-Variants of the same command:
-
-| Method | Change |
+| Setting | Options |
 | --- | --- |
-| Param Δ baseline | `--transporter simple` |
-| ABRA-α | add `--alpha_search 1` (α in `[--min_alpha, --max_alpha)` with step `--alpha_step`). **Note:** α is selected on `--test_annotations`. |
-| Zero-shot Grounding DINO | remove `--finetuning`, `--source_class`, `--svft`, `--transporter` |
-| Target domain expert only | remove `--source_class`, `--svft`, `--transporter` |
+| ABRA | `--method abra` (optionally `--abra_mask banded` or `plain`) |
+| Param Δ baseline | `--method param_delta` |
+| Task addition (θ_T + τ) | `--method task_addition` |
+| ABRA-α | add `--alpha_search 1`. α is chosen on `--alpha_annotations`; without it, α is chosen on the test split and the result is marked `"oracle": true` |
+| Fixed α | `--alpha 1.3` |
+| Per-layer α (e.g. fitted by `diagnose` on available classes, no oracle) | `--alpha_file report.json.alpha.json` |
+| Standard all-images protocol for one class | multi-class `--test_annotations` + `--eval_classes bus` |
+| Zero-shot Grounding DINO | no `--domain`, no `--residual` |
+| Target domain expert only | `--domain` without `--residual` |
+| Source class expert on the target domain | `--domain` = source domain expert, `--residual` = its class expert, `--method task_addition` |
+
+`results.json` holds AP, AP50, AP75, APs/m/l, per-class AP, method, α and the oracle flag.
+
+**Original checkpoints.** The original `best.pth` files (domain and class experts) are read directly. Evaluation uses θ_T + α·R, while the original code rebuilt each layer from the float32 SVD of θ_T; the difference is that SVD reconstruction error (top detection scores agree within ~3e-4 in our CPU check, see [docs/MIGRATION.md](docs/MIGRATION.md)).
+
+**Offline transport.** Transports only need weights, so they can be computed and saved without data:
+
+```bash
+python -m abra transport --method abra \
+  --residual outputs/experts/cityscapes/normal/bus/best.safetensors \
+  --target_domain outputs/domains/cityscapes/fog/best.safetensors \
+  --out outputs/transported/abra_bus_fog.safetensors
+```
+
+**Converting original checkpoints** (93 MB class experts → ~0.3 MB):
+
+```bash
+python -m abra migrate --out_dir weights_new \
+  --domain weights/cityscape_normal/best.pth weights/cityscape_fog/best.pth \
+  --expert weights/cityscapes_experts/exp1_*/best.pth --parent weights/cityscape_normal/best.pth
+```
+
+**Diagnostics** (weights only). Given residuals of *available* classes trained on both domain experts:
+
+```bash
+python -m abra diagnose --out outputs/diagnostics/cityscapes.json \
+  --source_domain outputs/domains/cityscapes/normal/best.safetensors \
+  --target_domain outputs/domains/cityscapes/fog/best.safetensors \
+  --pair car outputs/experts/cityscapes/normal/car/best.safetensors outputs/experts/cityscapes/fog/car/best.safetensors \
+  --pair person outputs/experts/cityscapes/normal/person/best.safetensors outputs/experts/cityscapes/fog/person/best.safetensors
+```
+
+It prints D1 (source vs target residual similarity), D2 (leave-one-class-out error of each transport and of the per-layer α; < 1 beats task addition) and D3 (domain shift per layer), and writes the fitted per-layer α for `eval --alpha_file`.
+
+**Tables**: `python -m abra report outputs/eval --csv results.csv`.
 
 ---
 
@@ -194,29 +226,26 @@ Variants of the same command:
 Unsupervised domain adaptation with Fourier Domain Adaptation, trained on labelled source and unlabelled target images:
 
 ```bash
-python main.py \
-  --exp_name fda_bus \
-  --output_root outputs/fda/bus \
-  --uda fda \
+python -m abra fda \
+  --exp_name fda_bus --output_root outputs/fda/bus \
+  --weights weights/groundingdino_swint_ogc.pth \
   --source_root datasets/cityscapes/normal/images \
   --target_root datasets/cityscapes/fog/images \
   --source_train_annotations datasets/cityscapes/normal/annotations/experts/bus/annotations_train.jsonl \
   --target_train_annotations datasets/cityscapes/fog/annotations/experts/bus/annotations_train.jsonl \
   --target_test_annotations datasets/cityscapes/fog/annotations/experts/bus/annotations_val.json \
   --label_map datasets/cityscapes/label_maps/experts/bus.json \
-  --model_cfg groundingdino/config/cfg_odvg.py \
-  --weights weights/groundingdino_swint_ogc.pth \
-  --trainable encoder_attn --param_type default \
   --epochs 12 --batch_size 2 --optim adamw --lr 1e-4 --weight_decay 1e-4
 ```
-<!-- TODO(berna): replace with the exact Table 2 hyper-parameters. Note: the FDA band size is currently fixed at L=0.01 (--fda_lb is not read) and --fda_ent/--fda_ita have no effect. -->
+<!-- TODO(berna): replace with the exact Table 2 hyper-parameters. -->
 
 ---
 
-## 🧪 Regression tests (refactor)
-
-`tests/golden/` holds reference outputs of the released code and the scripts that produce and check them (see [tests/golden/README.md](tests/golden/README.md)). The CPU check needs no GPU or dataset:
+## 🧪 Tests
 
 ```bash
-python tests/golden/cpu_forward_golden.py --weights_dir weights
+pytest tests/                                                   # unit tests (CPU; weight tests need ../weights)
+python tests/golden/cpu_forward_golden.py --weights_dir weights # end-to-end CPU regression vs the original code
 ```
+
+`tests/golden/` holds reference outputs of the original code and the scripts that produce and check them, including the GPU check of real AP (see [tests/golden/README.md](tests/golden/README.md)).

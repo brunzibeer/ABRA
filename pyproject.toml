@@ -9,8 +9,6 @@ dependencies = [
     "torchvision==0.16.0",
     "torchaudio==2.1.0",
     "scipy>=1.15.3",
-    "addict>=2.4.0",
-    "yapf==0.40.1",
     "timm>=1.0.27",
     "transformers==4.28.0",
     "numpy==1.24.0",
@@ -21,16 +19,12 @@ dependencies = [
     "jsonlines>=4.0.0",
     "tabulate>=0.10.0",
     "wandb>=0.28.0",
+    "safetensors>=0.4",
     "setuptools<82.0.0",
-    "torch-scatter>=2.1.2",
-    "torch-sparse>=0.6.18",
 ]
 
 [tool.uv]
 python-preference = "managed"
-find-links = [
-    "https://data.pyg.org/whl/torch-2.1.0+cu118.html"
-]
 
 [[tool.uv.index]]
 name = "pytorch-cu118"
@@ -42,6 +36,5 @@ torch = [{ index = "pytorch-cu118", marker = "sys_platform == 'linux'" }]
 torchvision = [{ index = "pytorch-cu118", marker = "sys_platform == 'linux'" }]
 torchaudio = [{ index = "pytorch-cu118", marker = "sys_platform == 'linux'" }]
 
-[tool.uv.extra-build-dependencies]
-torch-scatter = ["torch==2.1.0", "setuptools<82.0.0", "numpy==1.24.0"]
-torch-sparse = ["torch==2.1.0", "setuptools<82.0.0", "numpy==1.24.0"]
+[dependency-groups]
+dev = ["pytest>=7"]

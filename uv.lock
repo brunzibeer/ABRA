@@ -23,7 +23,6 @@ name = "abra"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "addict" },
     { name = "jsonlines" },
     { name = "matplotlib" },
     { name = "numpy" },
@@ -31,14 +30,13 @@ dependencies = [
     { name = "opencv-python", version = "4.11.0.86", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "pycocotools" },
     { name = "pyyaml" },
+    { name = "safetensors" },
     { name = "scipy" },
     { name = "setuptools" },
     { name = "tabulate" },
     { name = "timm" },
     { name = "torch", version = "2.1.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
     { name = "torch", version = "2.1.0+cu118", source = { registry = "https://download.pytorch.org/whl/cu118" }, marker = "sys_platform == 'linux'" },
-    { name = "torch-scatter" },
-    { name = "torch-sparse" },
     { name = "torchaudio", version = "2.1.0", source = { registry = "https://download.pytorch.org/whl/cu118" }, marker = "python_full_version < '3.12' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux'" },
     { name = "torchaudio", version = "2.1.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
     { name = "torchaudio", version = "2.1.0+cu118", source = { registry = "https://download.pytorch.org/whl/cu118" }, marker = "(python_full_version >= '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux') or (platform_python_implementation != 'CPython' and sys_platform == 'linux')" },
@@ -47,43 +45,38 @@ dependencies = [
     { name = "torchvision", version = "0.16.0+cu118", source = { registry = "https://download.pytorch.org/whl/cu118" }, marker = "(python_full_version >= '3.12' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux') or (platform_python_implementation != 'CPython' and sys_platform == 'linux')" },
     { name = "transformers" },
     { name = "wandb" },
-    { name = "yapf" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "addict", specifier = ">=2.4.0" },
     { name = "jsonlines", specifier = ">=4.0.0" },
     { name = "matplotlib", specifier = ">=3.7" },
     { name = "numpy", specifier = "==1.24.0" },
     { name = "opencv-python", specifier = ">=4.8.1.78" },
     { name = "pycocotools", specifier = ">=2.0.11" },
     { name = "pyyaml", specifier = ">3.10" },
+    { name = "safetensors", specifier = ">=0.4" },
     { name = "scipy", specifier = ">=1.15.3" },
     { name = "setuptools", specifier = "<82.0.0" },
     { name = "tabulate", specifier = ">=0.10.0" },
     { name = "timm", specifier = ">=1.0.27" },
     { name = "torch", marker = "sys_platform != 'linux'", specifier = "==2.1.0" },
     { name = "torch", marker = "sys_platform == 'linux'", specifier = "==2.1.0", index = "https://download.pytorch.org/whl/cu118" },
-    { name = "torch-scatter", specifier = ">=2.1.2" },
-    { name = "torch-sparse", specifier = ">=0.6.18" },
     { name = "torchaudio", marker = "sys_platform != 'linux'", specifier = "==2.1.0" },
     { name = "torchaudio", marker = "sys_platform == 'linux'", specifier = "==2.1.0", index = "https://download.pytorch.org/whl/cu118" },
     { name = "torchvision", marker = "sys_platform != 'linux'", specifier = "==0.16.0" },
     { name = "torchvision", marker = "sys_platform == 'linux'", specifier = "==0.16.0", index = "https://download.pytorch.org/whl/cu118" },
     { name = "transformers", specifier = "==4.28.0" },
     { name = "wandb", specifier = ">=0.28.0" },
-    { name = "yapf", specifier = "==0.40.1" },
 ]
 
-[[package]]
-name = "addict"
-version = "2.4.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/85/ef/fd7649da8af11d93979831e8f1f8097e85e82d5bfeabc8c68b39175d8e75/addict-2.4.0.tar.gz", hash = "sha256:b3b2210e0e067a281f5646c8c5db92e99b7231ea8b0eb5f74dbdf9e259d4e494", size = 9186, upload-time = "2020-11-21T16:21:31.416Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6a/00/b08f23b7d7e1e14ce01419a467b583edbb93c6cdb8654e54a9cc579cd61f/addict-2.4.0-py3-none-any.whl", hash = "sha256:249bb56bbfd3cdc2a004ea0ff4c2b6ddc84d53bc2194761636eb314d5cfa5dfc", size = 3832, upload-time = "2020-11-21T16:21:29.588Z" },
-]
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=7" }]
 
 [[package]]
 name = "annotated-types"
@@ -315,6 +308,18 @@ wheels = [
 ]
 
 [[package]]
+name = "exceptiongroup"
+version = "1.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/0e/97c33bf5009bdbac74fd2beace167cab3f978feb69cc36f1ef79360d6c4e/exceptiongroup-1.3.1-py3-none-any.whl", hash = "sha256:a7a39a3bd276781e98394987d3a5701d0c4edffb633bb7a5144577f82c773598", size = 16740, upload-time = "2025-11-21T23:01:53.443Z" },
+]
+
+[[package]]
 name = "filelock"
 version = "3.29.4"
 source = { registry = "https://pypi.org/simple" }
@@ -474,15 +479,12 @@ wheels = [
 ]
 
 [[package]]
-name = "importlib-metadata"
-version = "9.0.0"
+name = "iniconfig"
+version = "2.3.1"
 source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "zipp" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a9/01/15bb152d77b21318514a96f43af312635eb2500c96b55398d020c93d86ea/importlib_metadata-9.0.0.tar.gz", hash = "sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc", size = 56405, upload-time = "2026-03-20T06:42:56.999Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/01/e1/2069291243c926a2ff1cd706c7f3eeb9b62144bf60f77c9fb9ff2fb26bd3/iniconfig-2.3.1.tar.gz", hash = "sha256:67f4b9c50da0dedf52af349e7749a80a9057a5031199791b906c3bb3ae878960", size = 21209, upload-time = "2026-10-06T22:48:38.076Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/38/3d/2d244233ac4f76e38533cfcb2991c9eb4c7bf688ae0a036d30725b8faafe/importlib_metadata-9.0.0-py3-none-any.whl", hash = "sha256:2d21d1cc5a017bd0559e36150c21c830ab1dc304dedd1b7ea85d20f45ef3edd7", size = 27789, upload-time = "2026-03-20T06:42:55.665Z" },
+    { url = "https://files.pythonhosted.org/packages/56/43/4ca9e49d27a1fcf6bece6f6aec0ea46bb9112489b93d4b688fb415457bdb/iniconfig-2.3.1-py3-none-any.whl", hash = "sha256:9121e2c1fdb355232495be3194c8dfe87ccc2d5dee45947b78e68f499790d7a7", size = 7552, upload-time = "2026-10-06T22:48:36.959Z" },
 ]
 
 [[package]]
@@ -1021,6 +1023,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pluggy"
+version = "1.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
 name = "protobuf"
 version = "7.35.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1213,12 +1224,39 @@ wheels = [
 ]
 
 [[package]]
+name = "pygments"
+version = "2.21.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/49/2e/ced460408999b33da6b31b0021b0f37d329e202d4169aeb164493778f25b/pygments-2.21.0.tar.gz", hash = "sha256:610ca751c9bc2492b38eb9a38a7fbc93edbbb2d7182edaf34e66ae493dee5c8c", size = 5005329, upload-time = "2026-08-17T08:02:48.824Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/46/17f022dd3e953bf20a04a028a21ec746d942f8d2af30fa0f124fa0e6a684/pygments-2.21.0-py3-none-any.whl", hash = "sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9", size = 1250147, upload-time = "2026-08-17T08:02:44.912Z" },
+]
+
+[[package]]
 name = "pyparsing"
 version = "3.3.2"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f3/91/9c6ee907786a473bf81c5f53cf703ba0957b23ab84c264080fb5a450416f/pyparsing-3.3.2.tar.gz", hash = "sha256:c777f4d763f140633dcb6d8a3eda953bf7a214dc4eff598413c070bcdc117cbc", size = 6851574, upload-time = "2026-01-21T03:57:59.36Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/10/bd/c038d7cc38edc1aa5bf91ab8068b63d4308c66c4c8bb3cbba7dfbc049f9c/pyparsing-3.3.2-py3-none-any.whl", hash = "sha256:850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d", size = 122781, upload-time = "2026-01-21T03:57:55.912Z" },
+]
+
+[[package]]
+name = "pytest"
+version = "9.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "exceptiongroup", marker = "python_full_version < '3.11'" },
+    { name = "iniconfig" },
+    { name = "packaging" },
+    { name = "pluggy" },
+    { name = "pygments" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e4/47/b9efed96c114afcfa3c9d3fe98a76a1d14c74a9e266d397cf6eb64be5e01/pytest-9.1.1.tar.gz", hash = "sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313", size = 1636369, upload-time = "2026-06-19T10:58:32.857Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/25/1de2678b631f5a49215c6c96fff41ba892b0a34df68d6d80292b1b48aa7f/pytest-9.1.1-py3-none-any.whl", hash = "sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c", size = 386536, upload-time = "2026-06-19T10:58:31.347Z" },
 ]
 
 [[package]]
@@ -1731,21 +1769,6 @@ wheels = [
 ]
 
 [[package]]
-name = "torch-scatter"
-version = "2.1.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f5/ab/2a44ecac0f891dd0d765fc59ac8d277c6283a31907626560e72685df2ed6/torch_scatter-2.1.2.tar.gz", hash = "sha256:69b3aa435f2424ac6a1bfb6ff702da6eb73b33ca0db38fb26989c74159258e47", size = 108045, upload-time = "2023-10-06T08:49:07.081Z" }
-
-[[package]]
-name = "torch-sparse"
-version = "0.6.18"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "scipy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/42/e2/cddf10a8e32a0b214918943e6173672c8ec11000e69c36dad8e6b141cb60/torch_sparse-0.6.18.tar.gz", hash = "sha256:2f14c510a6e93f404c6ea357210615b3c15a71731f9dbd86f25434e34fb5a741", size = 209982, upload-time = "2023-10-06T08:51:55.326Z" }
-
-[[package]]
 name = "torchaudio"
 version = "2.1.0"
 source = { registry = "https://download.pytorch.org/whl/cu118" }
@@ -1975,27 +1998,4 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/59/b1/f7a96c09cab0c5131b1e6466659b093b401e1653cbe6bb77b462fc1c361d/wandb-0.28.0-py3-none-win32.whl", hash = "sha256:8834ef3a7c8c43b701654162783caa7ad37af48a0ff06fc35d0d65a411f76ccd", size = 24525206, upload-time = "2026-06-23T00:38:42.041Z" },
     { url = "https://files.pythonhosted.org/packages/c6/c4/c7bed5e981679c74e9fbb22c03ff31c42e95f266199d03d8d325f4d0e6df/wandb-0.28.0-py3-none-win_amd64.whl", hash = "sha256:ac1f82292e2da4f98297b78c3a46726b3a6c5734ecb75fc39b8db2c8a4989159", size = 24525214, upload-time = "2026-06-23T00:38:44.549Z" },
     { url = "https://files.pythonhosted.org/packages/f0/77/b5ce9696c8cb955521a7941fbc443e78b2f504894c6ae1a2d0b1de6e12ae/wandb-0.28.0-py3-none-win_arm64.whl", hash = "sha256:c5b0faf1b84cf79ebabed77538c1940a4c6053e815f767a4004e877a1354bed1", size = 22378208, upload-time = "2026-06-23T00:38:47.148Z" },
-]
-
-[[package]]
-name = "yapf"
-version = "0.40.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "importlib-metadata" },
-    { name = "platformdirs" },
-    { name = "tomli" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/e0/7a/9020bfa17d294b5d0d8bf26bb175ad4c90d1e3ad4039001f621ef046cb06/yapf-0.40.1.tar.gz", hash = "sha256:958587eb5c8ec6c860119a9c25d02addf30a44f75aa152a4220d30e56a98037c", size = 247509, upload-time = "2023-06-20T05:43:26.352Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/23/75/c374517c09e31bf22d3b3f156d73e0f38d08e29b2afdd607cef5f1e10aa9/yapf-0.40.1-py3-none-any.whl", hash = "sha256:b8bfc1f280949153e795181768ca14ef43d7312629a06c43e7abd279323af313", size = 250316, upload-time = "2023-06-20T05:43:23.68Z" },
-]
-
-[[package]]
-name = "zipp"
-version = "4.1.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b9/d8/eab98a517c14134c0b2eb4e2387bc5f457334293ec5d2dd3857ec2966802/zipp-4.1.0.tar.gz", hash = "sha256:4cb57381f544315db7688e976e922a2b18cdb513d21cc194eb42232ba2a3e602", size = 26214, upload-time = "2026-05-18T20:08:57.967Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3a/13/547360d81e6d88d58492968ffda9f9542854f11310ee556fef14260cc886/zipp-4.1.0-py3-none-any.whl", hash = "sha256:25ad4e16390cd314347dd8f1de67a2ac538ae658ed4ab9db16029c07c188e97f", size = 10238, upload-time = "2026-05-18T20:08:57.045Z" },
 ]
