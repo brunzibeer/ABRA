@@ -1,13 +1,7 @@
-"""Quick check that a machine can run the golden scripts. Prints OK/FAIL per item; takes ~1 minute.
-
-    python tests/golden/check_env.py --gdino_weights /path/to/groundingdino_swint_ogc.pth \
-        --fog_root golden_images/cityscapes/fog/images --normal_root golden_images/cityscapes/normal/images \
-        --weights_dir /path/to/weights
-"""
-import argparse
-import glob
+"""Quick check that the software environment can run the golden scripts (GPU, versions, compiled op,
+imports, BERT). Prints OK/FAIL per item. Run from the repo root: ``python tests/golden/check_env.py``.
+File and image paths are checked by ``run_gpu_golden.py`` itself before it starts."""
 import importlib
-import json
 import sys
 from pathlib import Path
 
@@ -69,50 +63,12 @@ def bert():
     return "bert-base-uncased available (HF cache or internet)"
 
 
-def file_exists(path):
-    def fn():
-        if not Path(path).exists():
-            raise FileNotFoundError(path)
-    return fn
-
-
-def roots_named_cityscapes(*roots):
-    def fn():
-        bad = [str(r) for r in roots if "cityscapes" not in str(r)]
-        assert not bad, f"rename so the path contains 'cityscapes' (else main.py does not append /val): {bad}"
-    return fn
-
-
-def images(root, pattern):
-    def fn():
-        names = {img["file_name"] for f in glob.glob(str(REPO / "annotations" / pattern)) for img in json.load(open(f))["images"]}
-        assert names, f"no annotation files match annotations/{pattern}"
-        missing = [n for n in names if not (Path(root) / n).exists()]
-        assert not missing, f"{len(missing)}/{len(names)} images missing under {root}, e.g. {missing[0]}"
-        return f"{len(names)} images found"
-    return fn
-
-
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--gdino_weights", type=Path, required=True)
-    p.add_argument("--fog_root", type=Path, required=True)
-    p.add_argument("--normal_root", type=Path, required=True)
-    p.add_argument("--weights_dir", type=Path, required=True, help="dir with cityscape_normal/, cityscape_fog/, cityscapes_experts/")
-    args = p.parse_args()
-
     check("GPU", gpu)
     check("package versions", versions)
     check("deformable attention CUDA op", deform_op)
     check("repo imports (main.py)", repo_imports)
     check("BERT tokenizer/model", bert)
-    check("GDINO base weights", file_exists(args.gdino_weights))
-    for sub in ["cityscape_normal/best.pth", "cityscape_fog/best.pth"]:
-        check(f"weights/{sub}", file_exists(args.weights_dir / sub))
-    check("class experts", lambda: f"{len(glob.glob(str(args.weights_dir / 'cityscapes_experts/*/best.pth')))} found")
-    check("'cityscapes' in image root paths", roots_named_cityscapes(args.fog_root, args.normal_root))
-    check("fog val images", images(args.fog_root / "val", "fog_val/*/annotations_val.json"))
-    check("normal val images", images(args.normal_root / "val", "normal_train/*/annotations_val.json"))
     print("\nall checks passed" if not failures else f"\n{len(failures)} check(s) failed: {', '.join(failures)}")
     sys.exit(1 if failures else 0)
 

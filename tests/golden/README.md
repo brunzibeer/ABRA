@@ -23,18 +23,20 @@ Helpers:
 - `check_env.py`: one-minute OK/FAIL check of GPU, package versions, compiled deformable attention (compared
   with the PyTorch reference), repo imports, BERT availability, weights and images. Run it first.
 
-Run from the repo root on the GPU machine:
+Run from the repo root on the GPU machine (`{cls}` is replaced by each class name; the runner first checks that
+every weight, annotation and image file exists, and `--check_only` stops after that check):
 
 ```bash
+python tests/golden/check_env.py
 python tests/golden/run_gpu_golden.py \
     --gdino_weights /path/to/groundingdino_swint_ogc.pth \
     --fog_root /path/to/cityscapes/fog/images \
     --normal_root /path/to/cityscapes/normal/images \
-    --annotations annotations \
-    --source_domain /path/to/weights/cityscape_normal/best.pth \
-    --target_domain /path/to/weights/cityscape_fog/best.pth \
-    --experts_dir /path/to/weights/cityscapes_experts \
-    --classes bus motorcycle rider train truck
+    --fog_val_ann '/path/to/fog/annotations/{cls}/annotations_val.json' \
+    --normal_ann_dir '/path/to/normal/annotations/{cls}' \
+    --source_domain /path/to/cityscape_normal/best.pth \
+    --target_domain /path/to/cityscape_fog/best.pth \
+    --expert '/path/to/cityscapes_experts/exp1_{cls}/best.pth'
 ```
 
 Logs of every run go to `outputs_golden/<run>.log`; commit only `gpu_golden.json`.

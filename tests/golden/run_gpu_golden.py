@@ -4,21 +4,19 @@ Runs the unmodified ``main.py`` (through ``seeded_main.py``) for a set of evalua
 and two short training smoke runs, and collects AP / AP50 / AP75 plus loss traces into one JSON file.
 The refactored code is accepted only if it reproduces these results (tolerance: 0.05 AP).
 
-Example (from the repo root):
+Example (from the repo root; ``{cls}`` in a path is replaced by each class name):
     python tests/golden/run_gpu_golden.py \
-        --gdino_weights /path/to/groundingdino_swint_ogc.pth \
+        --gdino_weights weights/groundingdino_swint_ogc.pth \
         --fog_root datasets/cityscapes/fog/images \
         --normal_root datasets/cityscapes/normal/images \
-        --annotations annotations \
-        --source_domain ../weights/cityscape_normal/best.pth \
-        --target_domain ../weights/cityscape_fog/best.pth \
-        --experts_dir ../weights/cityscapes_experts \
-        --classes bus train \
-        --out tests/golden/gpu_golden.json
+        --fog_val_ann 'datasets/cityscapes/fog/annotations/experts/{cls}/annotations_val.json' \
+        --normal_ann_dir 'datasets/cityscapes/normal/annotations/experts/{cls}' \
+        --source_domain path/to/cityscape_normal/best.pth \
+        --target_domain path/to/cityscape_fog/best.pth \
+        --expert 'path/to/cityscapes_experts/exp1_{cls}/best.pth'
 
-Expected layout: ``<annotations>/fog_val/<cls>/annotations_val.json`` and
-``<annotations>/normal_train/<cls>/annotations_{train.jsonl,val.json}``; experts in
-``<experts_dir>/<expert_prefix><cls>/best.pth``. Each run's full stdout goes to ``<work_dir>/<run>.log``.
+``--normal_ann_dir`` must contain ``annotations_train.jsonl`` and ``annotations_val.json`` (training smoke only).
+Each run's full stdout goes to ``<work_dir>/<run>.log``.
 """
 import argparse
 import json
@@ -49,6 +47,31 @@ def parse_ap(log_text):
     return dict(zip(keys, values))
 
 
+def preflight(args):
+    """Fail fast, before any GPU work, if a weight, annotation or image file is missing."""
+    problems = []
+    need = [args.gdino_weights, args.source_domain, args.target_domain]
+    for cls in args.classes:
+        need += [Path(args.expert.format(cls=cls)), Path(args.fog_val_ann.format(cls=cls))]
+    if not args.skip_train:
+        train_dir = Path(args.normal_ann_dir.format(cls=args.classes[0]))
+        need += [train_dir / "annotations_train.jsonl", train_dir / "annotations_val.json"]
+    problems += [f"missing file: {f}" for f in need if not Path(f).exists()]
+    for root in (args.fog_root, args.normal_root):
+        if "cityscapes" not in str(root):
+            problems.append(f"image root must contain 'cityscapes' (main.py appends /val only then): {root}")
+    for cls in args.classes:
+        ann = Path(args.fog_val_ann.format(cls=cls))
+        if ann.exists():
+            names = [img["file_name"] for img in json.load(open(ann))["images"]]
+            missing = [n for n in names if not (args.fog_root / "val" / n).exists()]
+            if missing:
+                problems.append(f"{cls}: {len(missing)}/{len(names)} images missing, e.g. {args.fog_root / 'val' / missing[0]}")
+    if problems:
+        sys.exit("Pre-flight check failed:\n  " + "\n  ".join(problems))
+    print(f"Pre-flight check passed ({len(args.classes)} classes).", flush=True)
+
+
 def run(name, main_args, work_dir, seed=0, trace=False):
     log_path = work_dir / f"{name}.log"
     env = dict(os.environ, GOLDEN_SEED=str(seed))
@@ -74,18 +97,22 @@ def main():
     p.add_argument("--gdino_weights", type=Path, required=True)
     p.add_argument("--fog_root", type=Path, required=True, help="Foggy Cityscapes images root (contains val/)")
     p.add_argument("--normal_root", type=Path, required=True, help="Cityscapes images root (contains train/, val/)")
-    p.add_argument("--annotations", type=Path, default=REPO / "annotations")
+    p.add_argument("--fog_val_ann", required=True, help="fog val COCO json per class, with {cls}")
+    p.add_argument("--normal_ann_dir", required=True, help="dir with normal annotations_train.jsonl/annotations_val.json, with {cls}")
     p.add_argument("--source_domain", type=Path, required=True)
     p.add_argument("--target_domain", type=Path, required=True)
-    p.add_argument("--experts_dir", type=Path, required=True)
-    p.add_argument("--expert_prefix", default="exp1_")
-    p.add_argument("--classes", nargs="+", default=["bus", "train"])
+    p.add_argument("--expert", required=True, help="class expert checkpoint, with {cls}")
+    p.add_argument("--classes", nargs="+", default=["bus", "motorcycle", "rider", "train", "truck"])
     p.add_argument("--alpha_search", action="store_true", help="also run ABRA-alpha (slow)")
     p.add_argument("--skip_train", action="store_true", help="skip the two training smoke runs")
     p.add_argument("--num_workers", type=int, default=2)
     p.add_argument("--work_dir", type=Path, default=REPO / "outputs_golden")
     p.add_argument("--out", type=Path, default=REPO / "tests" / "golden" / "gpu_golden.json")
+    p.add_argument("--check_only", action="store_true", help="only run the pre-flight file check")
     args = p.parse_args()
+    preflight(args)
+    if args.check_only:
+        return
     args.work_dir.mkdir(parents=True, exist_ok=True)
 
     results = {"args": {k: str(v) for k, v in vars(args).items()}, "eval": {}, "train": {}}
@@ -96,8 +123,8 @@ def main():
                 "--num_workers", args.num_workers]
 
     for cls in args.classes:
-        expert = args.experts_dir / f"{args.expert_prefix}{cls}" / "best.pth"
-        fog_val = args.annotations / "fog_val" / cls / "annotations_val.json"
+        expert = Path(args.expert.format(cls=cls))
+        fog_val = Path(args.fog_val_ann.format(cls=cls))
         base = lambda name: common(f"{cls}_{name}", fog_val, args.fog_root) + ["--test", 1]
         transport = ["--finetuning", args.target_domain, "--source_class", expert]
         settings = {
@@ -120,7 +147,7 @@ def main():
 
     if not args.skip_train:
         cls = args.classes[0]
-        train_dir = args.annotations / "normal_train" / cls
+        train_dir = Path(args.normal_ann_dir.format(cls=cls))
         label = json.loads(open(train_dir / "annotations_train.jsonl").readline())["detection"]["instances"][0]
         label_map = args.work_dir / f"label_map_{cls}.json"
         label_map.write_text(json.dumps({str(label["label"]): label["category"]}))
