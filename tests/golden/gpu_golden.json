@@ -1,5 +1,5 @@
 {
- "note": "Produced on the GPU server (working copy opengd-uv, older than tag official: no --abra_mask / analogy). Paths had {cls} replaced by 'train', so only the train class was evaluated (5 identical repeats). abra_banded and task_addition failed (argparse: options not in that code version).",
+ "note": "Produced on the GPU server (working copy opengd-uv, older than tag official: no --abra_mask / analogy). train class: first run (5 identical repeats, also the source of the training traces); bus/motorcycle/rider/truck: second run with --skip_train. Banded and task addition not run.",
  "args": {
   "gdino_weights": "weights/groundingdino_swint_ogc.pth",
   "fog_root": "datasets/cityscapes/fog/images",
@@ -19,6 +19,147 @@
  },
  "deterministic_across_5_repeats": true,
  "eval": {
+  "bus": {
+   "zero_shot": {
+    "AP": 48.634,
+    "AP50": 61.031,
+    "AP75": 53.464,
+    "APs": 0.0,
+    "APm": 9.572,
+    "APl": 67.376,
+    "returncode": 0
+   },
+   "target_domain": {
+    "AP": 22.719,
+    "AP50": 26.766,
+    "AP75": 25.015,
+    "APs": 0.023,
+    "APm": 2.12,
+    "APl": 35.662,
+    "returncode": 0
+   },
+   "abra": {
+    "AP": 57.228,
+    "AP50": 70.528,
+    "AP75": 59.175,
+    "APs": 0.027,
+    "APm": 23.195,
+    "APl": 74.116,
+    "returncode": 0
+   },
+   "param_delta_rep0": {
+    "AP": 37.498,
+    "AP50": 44.078,
+    "AP75": 41.285,
+    "APs": 0.026,
+    "APm": 3.698,
+    "APl": 56.514,
+    "returncode": 0
+   },
+   "param_delta_rep1": {
+    "AP": 37.498,
+    "AP50": 44.078,
+    "AP75": 41.285,
+    "APs": 0.026,
+    "APm": 3.698,
+    "APl": 56.514,
+    "returncode": 0
+   }
+  },
+  "motorcycle": {
+   "zero_shot": {
+    "AP": 23.135,
+    "AP50": 41.831,
+    "AP75": 21.541,
+    "APs": 13.233,
+    "APm": 24.004,
+    "APl": 41.594,
+    "returncode": 0
+   },
+   "target_domain": {
+    "AP": 3.313,
+    "AP50": 6.912,
+    "AP75": 2.789,
+    "APs": 16.072,
+    "APm": 4.203,
+    "APl": 3.19,
+    "returncode": 0
+   },
+   "abra": {
+    "AP": 30.011,
+    "AP50": 55.466,
+    "AP75": 26.0,
+    "APs": 16.125,
+    "APm": 29.021,
+    "APl": 55.664,
+    "returncode": 0
+   },
+   "param_delta_rep0": {
+    "AP": 7.209,
+    "AP50": 14.363,
+    "AP75": 6.733,
+    "APs": 17.102,
+    "APm": 7.777,
+    "APl": 9.017,
+    "returncode": 0
+   },
+   "param_delta_rep1": {
+    "AP": 7.209,
+    "AP50": 14.363,
+    "AP75": 6.733,
+    "APs": 17.102,
+    "APm": 7.777,
+    "APl": 9.017,
+    "returncode": 0
+   }
+  },
+  "rider": {
+   "zero_shot": {
+    "AP": 18.973,
+    "AP50": 31.726,
+    "AP75": 19.765,
+    "APs": 5.161,
+    "APm": 28.44,
+    "APl": 38.471,
+    "returncode": 0
+   },
+   "target_domain": {
+    "AP": 5.848,
+    "AP50": 10.586,
+    "AP75": 5.667,
+    "APs": 10.647,
+    "APm": 9.296,
+    "APl": 5.341,
+    "returncode": 0
+   },
+   "abra": {
+    "AP": 42.269,
+    "AP50": 66.081,
+    "AP75": 45.559,
+    "APs": 15.224,
+    "APm": 50.105,
+    "APl": 74.246,
+    "returncode": 0
+   },
+   "param_delta_rep0": {
+    "AP": 9.248,
+    "AP50": 15.897,
+    "AP75": 9.296,
+    "APs": 12.483,
+    "APm": 13.471,
+    "APl": 10.346,
+    "returncode": 0
+   },
+   "param_delta_rep1": {
+    "AP": 9.248,
+    "AP50": 15.897,
+    "AP75": 9.296,
+    "APs": 12.483,
+    "APm": 13.471,
+    "APl": 10.346,
+    "returncode": 0
+   }
+  },
   "train": {
    "zero_shot": {
     "AP": 16.311,
@@ -63,6 +204,53 @@
     "APs": 0.116,
     "APm": 0.29,
     "APl": 11.842,
+    "returncode": 0
+   }
+  },
+  "truck": {
+   "zero_shot": {
+    "AP": 31.2,
+    "AP50": 41.875,
+    "AP75": 32.698,
+    "APs": 0.58,
+    "APm": 7.947,
+    "APl": 58.984,
+    "returncode": 0
+   },
+   "target_domain": {
+    "AP": 6.265,
+    "AP50": 8.209,
+    "AP75": 6.628,
+    "APs": 1.778,
+    "APm": 0.554,
+    "APl": 12.145,
+    "returncode": 0
+   },
+   "abra": {
+    "AP": 38.101,
+    "AP50": 53.276,
+    "AP75": 39.158,
+    "APs": 7.301,
+    "APm": 16.055,
+    "APl": 65.115,
+    "returncode": 0
+   },
+   "param_delta_rep0": {
+    "AP": 13.754,
+    "AP50": 17.375,
+    "AP75": 15.159,
+    "APs": 0.983,
+    "APm": 0.761,
+    "APl": 28.707,
+    "returncode": 0
+   },
+   "param_delta_rep1": {
+    "AP": 13.754,
+    "AP50": 17.375,
+    "AP75": 15.159,
+    "APs": 0.983,
+    "APm": 0.761,
+    "APl": 28.707,
     "returncode": 0
    }
   }
@@ -146,5 +334,23 @@
    ],
    "seed": 0
   }
+ },
+ "args_second_run": {
+  "gdino_weights": "weights/groundingdino_swint_ogc.pth",
+  "fog_root": "datasets/cityscapes/fog/images",
+  "normal_root": "datasets/cityscapes/normal/images",
+  "fog_val_ann": "datasets/cityscapes/fog/annotations/experts/{cls}/annotations_val.json",
+  "normal_ann_dir": "datasets/cityscapes/normal/annotations/experts/{cls}",
+  "source_domain": "/work/horizon_store/abraout/domains/cityscapes/normal/dom1/best.pth",
+  "target_domain": "/work/horizon_store/abraout/domains/cityscapes/fog/dom1/best.pth",
+  "expert": "/work/horizon_store/abraout/experts/cityscapes/normal/exp1_{cls}/best.pth",
+  "classes": "['bus', 'motorcycle', 'rider', 'truck']",
+  "alpha_search": "False",
+  "with_banded_ta": "False",
+  "skip_train": "True",
+  "num_workers": "2",
+  "work_dir": "/homes/mbernardi/git/opengd-uv/outputs_golden",
+  "out": "/homes/mbernardi/git/opengd-uv/tests/golden/gpu_golden.json",
+  "check_only": "False"
  }
 }
