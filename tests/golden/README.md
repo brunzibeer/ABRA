@@ -17,6 +17,12 @@ none and banded), task addition and Param Δ (run twice, to measure its run-to-r
 class, plus loss traces of two 5-step `--debug` training runs (domain and class expert) with seed 0. Optional:
 `--alpha_search` adds ABRA-α (selected on the test split, i.e. the current oracle behaviour).
 
+Helpers:
+- `make_image_subset.py`: copies only the ~1,100 images these runs read (362 foggy val, 362 normal val, the
+  training images of one class) from full Cityscapes / Foggy Cityscapes, so a small server needs ~2 GB instead of ~40 GB.
+- `check_env.py`: one-minute OK/FAIL check of GPU, package versions, compiled deformable attention (compared
+  with the PyTorch reference), repo imports, BERT availability, weights and images. Run it first.
+
 Run from the repo root on the GPU machine:
 
 ```bash
