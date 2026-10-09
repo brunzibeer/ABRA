@@ -234,10 +234,10 @@ def evaluate(
         coco_evaluator.summarize()
         
     if getattr(args, 'save_coco_format', None):
-        if not args.save_coco_format.endswith('.json'):
-            args.save_coco_format += '.json'
         coco_output_path = Path(args.save_coco_format)
-        coco_output_path.mkdir(parents=True, exist_ok=True)
+        if coco_output_path.suffix != '.json':
+            coco_output_path = coco_output_path.with_suffix('.json')
+        coco_output_path.parent.mkdir(parents=True, exist_ok=True)
 
         save_predictions_as_coco(
             all_targets_for_coco, 

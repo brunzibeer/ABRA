@@ -26,11 +26,10 @@ from torch.autograd.function import once_differentiable
 from torch.nn.init import constant_, xavier_uniform_
 
 try:
-    # from groundingdino import _C
-    import MultiScaleDeformableAttention as _C
-except Exception:
-    warnings.warn("Failed to load custom C++ ops. Running on CPU mode Only!")
-    raise Exception('Wont work without MultiScaleDeformableAttention')
+    import MultiScaleDeformableAttention as _C  # compiled from groundingdino/models/GroundingDINO/ops
+except ImportError:
+    _C = None
+    warnings.warn("MultiScaleDeformableAttention op not compiled: only the (slow) PyTorch CPU path is available.")
 
 
 # helpers
@@ -330,6 +329,9 @@ class MultiScaleDeformableAttention(nn.Module):
             )
     
         if torch.cuda.is_available() and value.is_cuda:
+            if _C is None:
+                raise RuntimeError("CUDA inputs need the compiled MultiScaleDeformableAttention op: "
+                                   "cd groundingdino/models/GroundingDINO/ops && python setup.py build install")
             halffloat = False
             if value.dtype == torch.float16:
                 halffloat = True

@@ -15,7 +15,7 @@ import groundingdino.util.misc as utils
 from utils import binary_to_boolean_type
 from utils.builders import *
 from utils.parameters import get_trainable_parameters, get_trainable_keys, get_target_modules_list, create_and_replace_modules
-from utils.checkpoints import save_checkpoint
+from utils.checkpoints import save_checkpoint, load_checked
 from utils.fda_engine import run_fda
 from utils.alpha_search import run_alpha_search
 from utils.compute_mse import compute_mse
@@ -36,7 +36,7 @@ def get_parser():
     parser.add_argument('--label_map', type=Path)
     parser.add_argument('--fix_size', type=binary_to_boolean_type, default=False)
     parser.add_argument('--objectify', type=binary_to_boolean_type, default=False, help='Witch labels to "object" for training')
-    parser.add_argument('--add_split', type=binary_to_boolean_type, default=True, help='add split to image folder')
+    parser.add_argument('--add_split', type=binary_to_boolean_type, default=None, help='append train/ or val/ to --root (default: only for cityscapes, AODRaw, bdd roots)')
     
     # Model related args
     parser.add_argument('--model_cfg', type=Path, required=True, help='path to model config file')
@@ -130,7 +130,8 @@ def main(args):
 
     # 1 Load Dataset
     ####### TRAIN DS #######
-    args.add_split = any([n in str(args.root) for n in ['cityscapes', 'AODRaw', 'bdd']])
+    if args.add_split is None:
+        args.add_split = any([n in str(args.root) for n in ['cityscapes', 'AODRaw', 'bdd']])
     args.coco_val_path = args.test_annotations if not args.uda else args.target_test_annotations
     if not args.test and not args.uda:
         train_dataset = build_dataset(
@@ -180,15 +181,13 @@ def main(args):
     # 3 Load weights
     pretrain = torch.load(args.weights, map_location='cpu')['model']
     pretrain = utils.clean_state_dict(pretrain) # Used to remove 'module' from name
-    load_output = model.load_state_dict(pretrain, strict=False)
-    print(load_output)
+    load_checked(model, pretrain, name=f"base weights {args.weights}", allow_unexpected=True)
     
     # 4 Load finetuning
     if args.finetuning is not None and not args.svft_ckpt:
         finetuning = torch.load(args.finetuning, map_location='cpu')
         finetuning = utils.clean_state_dict(finetuning)
-        load_output = model.load_state_dict(finetuning, strict=False)
-        print(load_output)
+        load_checked(model, finetuning, name=f"finetuning {args.finetuning}")
 
     # 5 Freeze parameters
     for _, p in model.named_parameters():
@@ -226,12 +225,10 @@ def main(args):
     if args.finetuning is not None and args.svft_ckpt:
         finetuning = torch.load(args.finetuning, map_location='cpu')
         finetuning = utils.clean_state_dict(finetuning)
-        load_output = model.load_state_dict(finetuning, strict=False)
-        print(load_output)
+        load_checked(model, finetuning, name=f"finetuning (after SVFT) {args.finetuning}")
 
         if args.mse:
-            torch.load(args.mse_gt, map_location='cpu')
-            gt_ckpt = utils.clean_state_dict(torch.load(args.mse_gt, map_location='cpu'))
+            gt_ckpt= utils.clean_state_dict(torch.load(args.mse_gt, map_location='cpu'))
             svft_model_mse.load_state_dict(gt_ckpt, strict=False)
 
             return compute_mse(model, svft_model_mse)
@@ -260,6 +257,7 @@ def main(args):
     elif not args.uda and not args.test:
         best_ap = -99999
         for ep in range(args.epochs):
+            ap = None
             if ep % args.test_period == 0:
                 eval_stats = evaluate(
                     args=args,
@@ -274,7 +272,7 @@ def main(args):
                 )
                 ap = eval_stats['coco_eval_bbox'][0]
                 
-            if ep != 0 and ap > best_ap:
+            if ep != 0 and ap is not None and ap > best_ap:
                 best_ap = ap
                 save_checkpoint(args=args, model=model, svft=args.svft, pth_name='best', keys=trainable_keys)
             save_checkpoint(args=args, model=model, svft=args.svft, pth_name='last', keys=trainable_keys)
@@ -293,7 +291,7 @@ def main(args):
                 scheduler=scheduler
             )
 
-            if scheduler is not None and args.scheduler != 'onecylcer':
+            if scheduler is not None:
                 scheduler.step()
                 
             if wandb.run is not None:
@@ -316,7 +314,7 @@ def main(args):
         transported = transporter.transport()
         if args.transporter == 'merged':
             model = original_model
-        load_output = model.load_state_dict(transported, strict=False)
+        load_checked(model, transported, name=f"transported ({args.transporter})")
 
         if args.mse:
             return compute_mse(model, svft_model_mse)

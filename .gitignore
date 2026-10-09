@@ -160,10 +160,14 @@ cython_debug/
 #.idea/
 
 weights/
+# dataset splits are shipped as GitHub Release assets
+annotations/
 .vscode
 /datasets/
 outputs*/
+.DS_Store
 *.sh
+!scripts/*.sh
 *.png
 images/
 tools/dataset

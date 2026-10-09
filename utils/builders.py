@@ -201,6 +201,7 @@ def build_transporter(
             w_source=w_source,
             w_target=w_target,
             mask=mask,
+            alpha_estimate=args.alpha_estimate,
         )
     elif transporter_type == 'analogy':
         return Analogy(

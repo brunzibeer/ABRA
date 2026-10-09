@@ -1,20 +1,14 @@
-cython
-submitit
+# conda/pip install; torch, torchvision, torch-scatter and torch-sparse are installed first (see README)
 scipy
-termcolor
 addict
 yapf==0.40.1
 timm
-transformers
+transformers==4.28.0
 numpy==1.24.0
 opencv-python
-supervision==0.6.0
+matplotlib
 pycocotools
 pyyaml>3.10
-colorlog
 jsonlines
 tabulate
-torch==2.1.0
-torchvision==0.16.0
-torchaudio==2.1.0
 wandb
