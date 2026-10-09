@@ -98,6 +98,9 @@ def add_optim_args(p):
     g.add_argument("--eval_after_epoch", type=str2bool, default=False,
                    help="evaluate/select after each epoch (default: before, as the original code; "
                         "then the final epoch is never selected as best)")
+    g.add_argument("--fix_layer0_grad", type=str2bool, default=False,
+                   help="non-reentrant gradient checkpointing so that encoder layer 0 is trained (the original code "
+                        "never updated it; default off for reproducibility, see docs/MIGRATION.md)")
     g.add_argument("--class_loss_w", type=float, default=1.0, help="weight of the class loss")
     g.add_argument("--object_loss_w", type=float, default=1.0, help="weight of the 'object' loss (Objectification)")
 
@@ -134,6 +137,8 @@ def build_parser():
     add_train_args(p)
     p.add_argument("--domain", type=Path, required=True, help="parent domain expert")
     p.add_argument("--svft_diag", type=int, default=2, help="SVFT band half-width (off-diagonals)")
+    p.add_argument("--svft_zero_init", type=str2bool, default=False,
+                   help="start the SVFT band at zero (expert = parent at step 0) instead of the original random init")
     p.add_argument("--residual_encoding", default="svft_band", choices=["svft_band", "dense"])
 
     p = sub.add_parser("eval", help="evaluate a model on a test split")

@@ -15,7 +15,7 @@ from abra.weights.svd import band_indices
 
 
 class SVFTLinear(nn.Module):
-    def __init__(self, linear, off_diag):
+    def __init__(self, linear, off_diag, zero_init=False):
         super().__init__()
         u, sigma, vh = torch.linalg.svd(linear.weight.detach(), full_matrices=False)
         k = sigma.shape[0]
@@ -33,6 +33,8 @@ class SVFTLinear(nn.Module):
         torch.randn([2 * off_diag + 1, k])
         s = torch.zeros(rows.shape[0])
         nn.init.kaiming_normal_(s[None, :])
+        if zero_init:  # drawn anyway, so that the random stream (and every other layer) is unchanged
+            s.zero_()
         self.s = nn.Parameter(s.to(u.device))
         self.gate = nn.Parameter(torch.tensor([0.0], device=u.device))
 
@@ -55,12 +57,12 @@ class SVFTLinear(nn.Module):
             return (self.u.double() @ self.coefficients().double() @ self.vh.double()).cpu()
 
 
-def apply_svft(model, layer_names, off_diag):
+def apply_svft(model, layer_names, off_diag, zero_init=False):
     """Replace the given nn.Linear layers by SVFTLinear (in reverse order, as the original code did)."""
     for name in reversed(layer_names):
         parent_name, _, child = name.rpartition(".")
         parent = model.get_submodule(parent_name) if parent_name else model
-        setattr(parent, child, SVFTLinear(model.get_submodule(name), off_diag))
+        setattr(parent, child, SVFTLinear(model.get_submodule(name), off_diag, zero_init))
 
 
 def svft_residuals(model, layer_names):

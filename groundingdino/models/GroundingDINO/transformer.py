@@ -67,6 +67,7 @@ class Transformer(nn.Module):
         use_fusion_layer=False,
         use_checkpoint=False,
         use_transformer_ckpt=False,
+        ckpt_reentrant=True,
         use_text_cross_attention=False,
         text_dropout=0.1,
         fusion_dropout=0.1,
@@ -118,6 +119,7 @@ class Transformer(nn.Module):
             feature_fusion_layer=feature_fusion_layer,
             use_checkpoint=use_checkpoint,
             use_transformer_ckpt=use_transformer_ckpt,
+            ckpt_reentrant=ckpt_reentrant,
         )
 
         # choose decoder layer type
@@ -419,6 +421,7 @@ class TransformerEncoder(nn.Module):
         feature_fusion_layer=None,
         use_checkpoint=False,
         use_transformer_ckpt=False,
+        ckpt_reentrant=True,
     ):
         """_summary_
 
@@ -465,6 +468,10 @@ class TransformerEncoder(nn.Module):
 
         self.use_checkpoint = use_checkpoint
         self.use_transformer_ckpt = use_transformer_ckpt
+        # Reentrant checkpointing (torch's default) gives no gradient to a checkpointed block whose inputs do not
+        # require grad: with a frozen backbone and text encoder, encoder layer 0 never trains. ABRA keeps the
+        # original behaviour by default (reproducibility); --fix_layer0_grad 1 uses non-reentrant checkpointing.
+        self.ckpt_reentrant = ckpt_reentrant
 
     @staticmethod
     def get_reference_points(spatial_shapes, valid_ratios, device):
@@ -558,6 +565,7 @@ class TransformerEncoder(nn.Module):
                         memory_text,
                         key_padding_mask,
                         text_attention_mask,
+                        use_reentrant=self.ckpt_reentrant,
                     )
                 else:
                     output, memory_text = self.fusion_layers[layer_id](
@@ -585,6 +593,7 @@ class TransformerEncoder(nn.Module):
                     spatial_shapes,
                     level_start_index,
                     key_padding_mask,
+                    use_reentrant=self.ckpt_reentrant,
                 )
             else:
                 output = layer(
@@ -960,6 +969,7 @@ def build_transformer(args):
         use_fusion_layer=args.use_fusion_layer,
         use_checkpoint=args.use_checkpoint,
         use_transformer_ckpt=args.use_transformer_ckpt,
+        ckpt_reentrant=not getattr(args, "fix_layer0_grad", False),
         use_text_cross_attention=args.use_text_cross_attention,
         text_dropout=args.text_dropout,
         fusion_dropout=args.fusion_dropout,

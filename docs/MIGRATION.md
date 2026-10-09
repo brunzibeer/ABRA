@@ -89,8 +89,9 @@ bare target domain expert.
    outputs that do not require grad when its inputs don't. The inputs of `fusion_layers.0` and `layers.0` come
    from the frozen backbone/BERT, so these layers get no gradient: domain experts keep the pretrained weights
    there (fog and normal experts are bit-identical on all 20 layer-0 tensors), and class experts keep the
-   random SVFT initialisation there (≈2% of the weight norm), which ABRA then transports. Fix (not applied yet,
-   changes results): `checkpoint(..., use_reentrant=False)`.
+   random SVFT initialisation there (≈2% of the weight norm), which ABRA then transports. Fix, opt-in because it
+   changes results: `--fix_layer0_grad 1` (non-reentrant checkpointing; verified in `tests/test_layer0_grad.py`).
+   Related opt-in: `--svft_zero_init 1` starts class experts exactly at their parent (no random residual).
 2. **Model selection on the test split**: `best.pth` (domain and class experts) and ABRA-α are selected by AP on
    `--test_annotations`. With the default order the model after the last epoch is never a `best` candidate.
 3. **Param Δ depends on arbitrary SVD signs**: it reuses source coefficients in the target basis without

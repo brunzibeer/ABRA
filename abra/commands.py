@@ -93,7 +93,7 @@ def train_expert(args):
     freeze_all(model)
     layers = adapted_linear_layers(model, args.trainable)
     parent_weights = layer_weights(parent, layers)
-    apply_svft(model, layers, args.svft_diag)
+    apply_svft(model, layers, args.svft_diag, zero_init=args.svft_zero_init)
     print(f"[train] SVFT on {len(layers)} layers (band half-width {args.svft_diag})")
 
     def save(name, ap):

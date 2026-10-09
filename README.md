@@ -152,6 +152,8 @@ python -m abra train-expert \
   --lp_names ref_point_head sampling_offsets --lp_lr 1e-3
 ```
 
+Two opt-in fixes change results and are off by default to reproduce the paper: `--fix_layer0_grad 1` (encoder layer 0 is otherwise never trained, see [docs/MIGRATION.md](docs/MIGRATION.md) §4) for both training commands, and `--svft_zero_init 1` (class experts start exactly at their parent).
+
 The same command with `--domain` set to the *target* domain expert and target-domain data trains the target-domain fine-tuning reference (or residuals of available target classes).
 
 ---

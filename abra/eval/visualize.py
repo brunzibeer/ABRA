@@ -105,42 +105,6 @@ def visualize_predictions(
             # Draw bounding box
             cv2.rectangle(canvas, (x1, y1), (x2, y2), color, THICKNESS)
 
-            # Build label text
-            # TODO: This - 1 is just for visualization with right names for supp
-            if int(label) < len(cat_list):
-                label_text = f'{cat_list[int(label)]}'
-            else:
-                label_text = f'Unknown_{int(label)}'
-
-            # Measure text so the background pill fits snugly
-            (text_w, text_h), baseline = cv2.getTextSize(
-                label_text, cv2.FONT_HERSHEY_SIMPLEX, FONT_SCALE, THICKNESS
-            )
-
-            # Position label above the box; fall back to inside if near the top edge
-            text_y = y1 - baseline if y1 > text_h + baseline + 5 else y1 + text_h + baseline
-
-            # Draw filled background rectangle for readability
-            # cv2.rectangle(
-            #     canvas,
-            #     (x1, text_y - text_h - baseline),
-            #     (x1 + text_w, text_y + baseline),
-            #     color,
-            #     cv2.FILLED,
-            # )
-
-            # Draw label text in black over the coloured background
-            # cv2.putText(
-            #     canvas,
-            #     label_text,
-            #     (x1, text_y),
-            #     cv2.FONT_HERSHEY_SIMPLEX,
-            #     FONT_SCALE,
-            #     (0, 0, 0),
-            #     max(1, THICKNESS - 1),
-            #     cv2.LINE_AA,
-            # )
-
         # Save image
         save_path = save_dir / f'prediction_{start_idx + i + 1:04d}.png'
         cv2.imwrite(str(save_path), canvas)

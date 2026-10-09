@@ -38,3 +38,10 @@ torchaudio = [{ index = "pytorch-cu118", marker = "sys_platform == 'linux'" }]
 
 [dependency-groups]
 dev = ["pytest>=7"]
+
+[tool.ruff]
+line-length = 125
+extend-exclude = ["groundingdino", "tests/legacy_svft.py"]
+
+[tool.ruff.lint]
+select = ["E9", "F"]
