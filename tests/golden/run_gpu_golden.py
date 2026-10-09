@@ -104,6 +104,7 @@ def main():
     p.add_argument("--expert", required=True, help="class expert checkpoint, with {cls}")
     p.add_argument("--classes", nargs="+", default=["bus", "motorcycle", "rider", "train", "truck"])
     p.add_argument("--alpha_search", action="store_true", help="also run ABRA-alpha (slow)")
+    p.add_argument("--with_banded_ta", action="store_true", help="also run ABRA banded mask and task addition")
     p.add_argument("--skip_train", action="store_true", help="skip the two training smoke runs")
     p.add_argument("--num_workers", type=int, default=2)
     p.add_argument("--work_dir", type=Path, default=REPO / "outputs_golden")
@@ -131,10 +132,12 @@ def main():
             "zero_shot": [],
             "target_domain": ["--finetuning", args.target_domain],
             "abra": transport + ["--svft", 1, "--transporter", "abra"],
-            "abra_banded": transport + ["--svft", 1, "--transporter", "abra", "--abra_mask", "banded"],
-            "task_addition": transport + ["--svft", 0, "--transporter", "analogy",
-                                          "--source_domain", args.source_domain, "--target_domain", args.target_domain],
         }
+        if args.with_banded_ta:  # needs a main.py with --abra_mask and the 'analogy' transporter
+            settings["abra_banded"] = transport + ["--svft", 1, "--transporter", "abra", "--abra_mask", "banded"]
+            settings["task_addition"] = transport + ["--svft", 0, "--transporter", "analogy",
+                                                     "--source_domain", args.source_domain,
+                                                     "--target_domain", args.target_domain]
         if args.alpha_search:
             settings["abra_alpha_oracle"] = transport + ["--svft", 1, "--transporter", "abra", "--alpha_search", 1]
         res = {name: run(f"{cls}_{name}", base(name) + extra, args.work_dir) for name, extra in settings.items()}

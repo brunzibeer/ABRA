@@ -13,7 +13,7 @@ expert: Frobenius norm and 8 fixed random probes `yᵀ ΔW x`. `simple_signdepen
 arbitrary SVD signs, so it is recorded for reference only.
 
 `gpu_golden.json` holds AP/AP50/AP75/APs/APm/APl (3 decimals) for zero-shot, target domain expert, ABRA (mask
-none and banded), task addition and Param Δ (run twice, to measure its run-to-run variance from GPU SVD signs) per
+none; banded and task addition only with `--with_banded_ta`) and Param Δ (run twice, to measure its run-to-run variance from GPU SVD signs) per
 class, plus loss traces of two 5-step `--debug` training runs (domain and class expert) with seed 0. Optional:
 `--alpha_search` adds ABRA-α (selected on the test split, i.e. the current oracle behaviour).
 
