@@ -1,0 +1,150 @@
+{
+ "note": "Produced on the GPU server (working copy opengd-uv, older than tag official: no --abra_mask / analogy). Paths had {cls} replaced by 'train', so only the train class was evaluated (5 identical repeats). abra_banded and task_addition failed (argparse: options not in that code version).",
+ "args": {
+  "gdino_weights": "weights/groundingdino_swint_ogc.pth",
+  "fog_root": "datasets/cityscapes/fog/images",
+  "normal_root": "datasets/cityscapes/normal/images",
+  "fog_val_ann": "datasets/cityscapes/fog/annotations/experts/train/annotations_val.json",
+  "normal_ann_dir": "datasets/cityscapes/normal/annotations/experts/train",
+  "source_domain": "/work/horizon_store/abraout/domains/cityscapes/normal/dom1/best.pth",
+  "target_domain": "/work/horizon_store/abraout/domains/cityscapes/fog/dom1/best.pth",
+  "expert": "/work/horizon_store/abraout/experts/cityscapes/normal/exp1_train/best.pth",
+  "classes": "['bus', 'motorcycle', 'rider', 'train', 'truck']",
+  "alpha_search": "False",
+  "skip_train": "False",
+  "num_workers": "2",
+  "work_dir": "/homes/mbernardi/git/opengd-uv/outputs_golden",
+  "out": "/homes/mbernardi/git/opengd-uv/tests/golden/gpu_golden.json",
+  "check_only": "False"
+ },
+ "deterministic_across_5_repeats": true,
+ "eval": {
+  "train": {
+   "zero_shot": {
+    "AP": 16.311,
+    "AP50": 44.023,
+    "AP75": 8.031,
+    "APs": 0.0,
+    "APm": 2.693,
+    "APl": 19.446,
+    "returncode": 0
+   },
+   "target_domain": {
+    "AP": 2.166,
+    "AP50": 4.597,
+    "AP75": 1.19,
+    "APs": 0.167,
+    "APm": 0.168,
+    "APl": 4.401,
+    "returncode": 0
+   },
+   "abra": {
+    "AP": 35.094,
+    "AP50": 59.947,
+    "AP75": 34.247,
+    "APs": 1.111,
+    "APm": 13.849,
+    "APl": 41.052,
+    "returncode": 0
+   },
+   "param_delta_rep0": {
+    "AP": 8.057,
+    "AP50": 19.825,
+    "AP75": 3.043,
+    "APs": 0.116,
+    "APm": 0.29,
+    "APl": 11.842,
+    "returncode": 0
+   },
+   "param_delta_rep1": {
+    "AP": 8.057,
+    "AP50": 19.825,
+    "AP75": 3.043,
+    "APs": 0.116,
+    "APm": 0.29,
+    "APl": 11.842,
+    "returncode": 0
+   }
+  }
+ },
+ "train": {
+  "domain_smoke": {
+   "AP": 54.82,
+   "AP50": 62.487,
+   "AP75": 62.487,
+   "returncode": 0,
+   "trace": [
+    {
+     "step": 0,
+     "TRAIN/epoch": 0.0,
+     "TRAIN/total_loss": 26.460996627807617,
+     "TRAIN/loss_specific": 0.0
+    },
+    {
+     "step": 13,
+     "TRAIN/epoch": 0.0,
+     "TRAIN/total_loss": 11.242562294006348,
+     "TRAIN/loss_specific": 0.0
+    },
+    {
+     "step": 27,
+     "TRAIN/epoch": 0.0,
+     "TRAIN/total_loss": 14.955138206481934,
+     "TRAIN/loss_specific": 0.0
+    },
+    {
+     "step": 41,
+     "TRAIN/epoch": 0.0,
+     "TRAIN/total_loss": 6.487752914428711,
+     "TRAIN/loss_specific": 0.0
+    },
+    {
+     "step": 55,
+     "TRAIN/epoch": 0.0,
+     "TRAIN/total_loss": 9.123027801513672,
+     "TRAIN/loss_specific": 0.0
+    }
+   ],
+   "seed": 0
+  },
+  "expert_smoke": {
+   "AP": 38.629,
+   "AP50": 43.45,
+   "AP75": 43.45,
+   "returncode": 0,
+   "trace": [
+    {
+     "step": 0,
+     "TRAIN/epoch": 0.0,
+     "TRAIN/total_loss": 26.6373291015625,
+     "TRAIN/loss_specific": 26.6373291015625
+    },
+    {
+     "step": 13,
+     "TRAIN/epoch": 0.0,
+     "TRAIN/total_loss": 10.760859489440918,
+     "TRAIN/loss_specific": 10.760859489440918
+    },
+    {
+     "step": 27,
+     "TRAIN/epoch": 0.0,
+     "TRAIN/total_loss": 27.179384231567383,
+     "TRAIN/loss_specific": 27.179384231567383
+    },
+    {
+     "step": 41,
+     "TRAIN/epoch": 0.0,
+     "TRAIN/total_loss": 17.6336727142334,
+     "TRAIN/loss_specific": 17.6336727142334
+    },
+    {
+     "step": 55,
+     "TRAIN/epoch": 0.0,
+     "TRAIN/total_loss": 11.186017990112305,
+     "TRAIN/loss_specific": 11.186017990112305
+    }
+   ],
+   "seed": 0
+  }
+ }
+}
