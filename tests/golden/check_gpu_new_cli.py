@@ -24,9 +24,12 @@ REPO = Path(__file__).resolve().parents[2]
 GOLDEN = REPO / "tests" / "golden" / "gpu_golden.json"
 
 
-def run(name, cli_args, work_dir):
+def run(name, cli_args, work_dir, dry_run=False):
     out = work_dir / name
     cmd = [sys.executable, "-m", "abra", *[str(a) for a in cli_args], "--exp_name", name, "--output_root", out]
+    if dry_run:
+        print(" ".join(str(c) for c in cmd))
+        return None
     print(f"[{name}] running", flush=True)
     with open(work_dir / f"{name}.log", "w") as log:
         proc = subprocess.run([str(c) for c in cmd], cwd=REPO, stdout=log, stderr=subprocess.STDOUT)
@@ -44,7 +47,10 @@ def main():
     p.add_argument("--normal_ann_dir", required=True)
     p.add_argument("--expert", required=True)
     p.add_argument("--classes", nargs="+", default=["bus", "motorcycle", "rider", "train", "truck"])
+    p.add_argument("--settings", nargs="+", default=["zero_shot", "target_domain", "abra", "param_delta_rep0"],
+                   help="evaluation settings to check (param_delta only matches with ORIGINAL .pth experts)")
     p.add_argument("--skip_train", action="store_true")
+    p.add_argument("--dry_run", action="store_true", help="print the commands without running them")
     p.add_argument("--num_workers", type=int, default=2)
     p.add_argument("--tol", type=float, default=0.05)
     p.add_argument("--work_dir", type=Path, default=REPO / "outputs_golden_new")
@@ -61,7 +67,11 @@ def main():
         settings = {"zero_shot": [], "target_domain": ["--domain", args.target_domain],
                     "abra": [*transport, "--method", "abra"], "param_delta_rep0": [*transport, "--method", "param_delta"]}
         for setting, extra in settings.items():
-            out = run(f"{cls}_{setting}", ["eval", *common, *extra], args.work_dir)
+            if setting not in args.settings:
+                continue
+            out = run(f"{cls}_{setting}", ["eval", *common, *extra], args.work_dir, args.dry_run)
+            if args.dry_run:
+                continue
             new = json.loads((out / "results.json").read_text())["AP"] if out else float("nan")
             old = golden["eval"].get(cls, {}).get(setting, {}).get("AP")
             ok = old is not None and abs(new - old) <= args.tol
@@ -71,9 +81,10 @@ def main():
     if not args.skip_train:
         cls = args.classes[0] if "train" not in args.classes else "train"
         train_dir = Path(args.normal_ann_dir.format(cls=cls))
-        label = json.loads(open(train_dir / "annotations_train.jsonl").readline())["detection"]["instances"][0]
         label_map = args.work_dir / f"label_map_{cls}.json"
-        label_map.write_text(json.dumps({str(label["label"]): label["category"]}))
+        if not args.dry_run:
+            label = json.loads(open(train_dir / "annotations_train.jsonl").readline())["detection"]["instances"][0]
+            label_map.write_text(json.dumps({str(label["label"]): label["category"]}))
         common = ["--weights", args.gdino_weights, "--root", args.normal_root, "--num_workers", 0, "--seed", 0,
                   "--test_annotations", train_dir / "annotations_val.json",
                   "--train_annotations", train_dir / "annotations_train.jsonl", "--label_map", label_map,
@@ -83,13 +94,17 @@ def main():
                  "expert_smoke": ["train-expert", *common, "--domain", args.source_domain, "--svft_diag", 2,
                                   "--lr", "1e-2", "--lp_lr", "1e-3", "--weight_decay", 0.0]}
         for name, cli in smoke.items():
-            out = run(name, cli, args.work_dir)
+            out = run(name, cli, args.work_dir, args.dry_run)
+            if args.dry_run:
+                continue
             losses = [json.loads(l)["TRAIN/total_loss"] for l in open(out / "metrics.jsonl")
                       if "TRAIN/total_loss" in l] if out else []
             ref = [r["TRAIN/total_loss"] for r in golden["train"][name]["trace"]]
             dev = max((abs(a - b) / abs(b) for a, b in zip(losses, ref)), default=float("nan"))
             print(f"[{name}] loss trace relative deviation {dev:.1e} (new {losses}, original {ref})")
 
+    if args.dry_run:
+        return
     print(f"\n{'class':12s} {'setting':18s} {'original':>9s} {'new':>9s}  ok (|diff| <= {args.tol})")
     for cls, setting, old, new, ok in rows:
         print(f"{cls:12s} {setting:18s} {old if old is not None else float('nan'):9.3f} {new:9.3f}  {'yes' if ok else 'NO'}")

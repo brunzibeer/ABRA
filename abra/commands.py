@@ -215,12 +215,24 @@ def transport_offline(args):
     print(f"[transport] {args.method}: {len(r)} layers -> {args.out} (dense residual on {args.target_domain})")
 
 
+def _migrated_name(path, out_dir, taken):
+    """Output file named after the last two directories + stem (e.g. fog/dom1/best.pth -> fog_dom1_best);
+    refuses to overwrite a file written earlier in the same run."""
+    path = Path(path)
+    out = out_dir / ("_".join([*path.parent.parts[-2:], path.stem]) + ".safetensors")
+    if out in taken:
+        raise SystemExit(f"[migrate] two inputs map to {out.name}; migrate them in separate runs or rename them")
+    taken.add(out)
+    return out
+
+
 def migrate(args):
     from abra.weights.io import _read
     args.out_dir.mkdir(parents=True, exist_ok=True)
+    taken = set()
     for path in args.domain:
         tensors, info = load_domain_expert(path)
-        out = args.out_dir / f"{Path(path).parent.name}_{Path(path).stem}.safetensors"
+        out = _migrated_name(path, args.out_dir, taken)
         save_domain_expert(out, tensors, {"migrated_from": str(path)})
         print(f"[migrate] domain expert {path} -> {out} (sha256 {info['sha256'][:12]})")
     if args.expert:
@@ -232,7 +244,7 @@ def migrate(args):
             raw, _ = _read(path)
             off_diag = int(max((i - j).abs().max().item() for i, j in
                                (torch.nonzero(raw[f"{l}.svft_layer.s"], as_tuple=True) for l in legacy.layers)))
-            out = args.out_dir / f"{Path(path).parent.name}_{Path(path).stem}.safetensors"
+            out = _migrated_name(path, args.out_dir, taken)
             info = save_residual(out, legacy.delta, layer_weights(parent, legacy.layers), parent_info, off_diag,
                                  {"migrated_from": str(path)})
             decoded = load_residual(out, parent=args.parent)
