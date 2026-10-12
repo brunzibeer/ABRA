@@ -52,3 +52,10 @@ python tests/golden/run_gpu_golden.py \
 ```
 
 Logs of every run go to `outputs_golden/<run>.log`; commit only `gpu_golden.json`.
+
+**Result (2026-10-12).** `check_gpu_new_cli.py` passes for zero-shot and target domain expert (identical) and
+reports differences of up to 0.28 AP for ABRA / Param Δ on single classes; these come from the intentional
+evaluation change in `docs/MIGRATION.md` §3.1 (per-class table there) and were accepted. The training smoke traces
+in `gpu_golden.json` come from the `train` class run (`check_gpu_new_cli.py` uses `train` when it is in
+`--classes`, `run_gpu_golden.py` uses the first class): compare traces only between runs on the same class.
+Paths in `gpu_golden.json` were made generic (`<abraout>/...`) before publishing.

@@ -52,6 +52,22 @@ code (same SVD, same op order) was tried and gave deviations of the same size, s
 outputs are not reachable without the original sparse kernels. The real-AP check is
 `tests/golden/check_gpu_new_cli.py` (tolerance 0.05 AP).
 
+Measured on the GPU (2026-10-12, original and new code in the same job on one Quadro RTX 5000; the original code
+reproduces `gpu_golden.json` within 0.019 AP there): zero-shot and target domain expert are **identical** for all
+five classes; ABRA and Param Δ change by up to a few tenths of AP on single classes, in both directions, because
+the exact θ_T is used. The exact θ_T was kept as the reference (it is the correct evaluation, not an approximation).
+
+| AP (Cityscapes → Foggy) | bus | motorcycle | rider | train | truck | mean |
+| --- | --- | --- | --- | --- | --- | --- |
+| ABRA, original code | 57.237 | 30.012 | 42.270 | 35.092 | 38.098 | 40.542 |
+| ABRA, new code | 57.223 | 30.008 | 42.286 | 34.969 | 38.119 | 40.521 |
+| ABRA, new code + migrated weights | 57.209 | 29.979 | 42.316 | 34.926 | 38.113 | 40.509 |
+| Param Δ, original code | 37.497 | 7.210 | 9.256 | 8.057 | 13.756 | 15.155 |
+| Param Δ, new code | 37.422 | 7.289 | 9.277 | 7.780 | 13.742 | 15.102 |
+
+The largest changes are on `train`, which has only 23 boxes in its Foggy val split: one box crossing one IoU
+threshold moves its AP by ~0.3.
+
 ### 3.2 Task addition
 The original `analogy` transporter added `U_S (S_pre + s) V_S − θ_S`, i.e. τ plus the float32 reconstruction error
 of θ_S (about 1% of ‖τ‖); `--method task_addition` adds exactly τ (verified in `tests/test_weights_transport.py`).
