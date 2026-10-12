@@ -239,7 +239,6 @@ python -m abra fda \
   --label_map datasets/cityscapes/label_maps/experts/bus.json \
   --epochs 12 --batch_size 2 --optim adamw --lr 1e-4 --weight_decay 1e-4
 ```
-<!-- TODO(berna): replace with the exact Table 2 hyper-parameters. -->
 
 ---
 

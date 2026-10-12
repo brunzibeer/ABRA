@@ -3,8 +3,9 @@ low-frequency amplitude of unlabelled target images, evaluated on the target tes
 
 Ported from ``utils/fda_engine.py`` (tag ``official``) with the same behaviour:
 - images are resized to 1024x512 and cropped (no other augmentation), FDA is applied in [0, 255];
-- only the supervised detection loss on FDA-restyled source images is used (the original code's entropy
-  options never reached the loss, so they are not exposed here);
+- by default only the supervised detection loss on FDA-restyled source images is used, as in the original code
+  (its entropy options never reached the loss); ``--fda_ent > 0`` adds FDA's entropy minimisation on the
+  unlabelled target images (new, see ``target_entropy``);
 - the target split is evaluated before training and after every ``--test_period`` epochs; ``best`` is
   saved when AP improves, except after the first epoch (as in the original code).
 ``--fda_lb`` (band size L) is now honoured; the original code always used L = 0.01, the default.
@@ -26,6 +27,8 @@ from abra.utils.checkpoint import load_checked
 from abra.weights.io import load_domain_expert, save_domain_expert
 from groundingdino.datasets.coco import CocoDetection
 from groundingdino.datasets.odvg import ODVGDataset
+from groundingdino.models.GroundingDINO.groundingdino import create_positive_map
+import math
 import numpy as np
 import os
 from PIL import Image
@@ -160,10 +163,40 @@ def add_fda_args(p):
     g.add_argument("--label_map", type=Path, required=True)
     g.add_argument("--init", type=Path, default=None, help="start from this domain expert instead of theta_0")
     g.add_argument("--fda_lb", type=float, default=0.01, help="FDA band size L (fraction of the image size)")
+    g.add_argument("--fda_ent", type=float, default=0.0,
+                   help="weight of the entropy loss on target images (0 = off, original Table 2 setting; "
+                        "the FDA paper uses 0.005)")
+    g.add_argument("--fda_ita", type=float, default=2.0, help="robustness exponent of the entropy loss (FDA: 2.0)")
+    g.add_argument("--fda_ent_threshold", type=float, default=0.3,
+                   help="entropy only on target queries whose best class score exceeds this")
     g.add_argument("--fix_size", default=False)
     g.add_argument("--visualize_predictions", default=False)
     g.add_argument("--save_coco_format", default=None)
     g.add_argument("--zs_th", type=float, default=0.3)
+
+
+def target_entropy(outputs, caption, categories, ita, threshold):
+    """FDA entropy loss (Yang & Soatto, CVPR 2020) on unlabelled target images, adapted to Grounding DINO.
+
+    FDA penalises the robust entropy ``(ent**2 + 1e-8) ** ita`` of the normalised class posterior of every pixel.
+    Grounding DINO scores a (query, category) pair with the mean sigmoid of the category's tokens (as PostProcess
+    does), so ``ent`` is the binary entropy of these scores, divided by ln 2 (range [0, 1]) and averaged over the
+    categories. Only queries whose best score exceeds ``threshold`` contribute: pushing background queries to
+    confidence would create false positives. Returns (loss or None if no query passes, number of queries used).
+    """
+    logits = outputs["pred_logits"]  # [B, Q, 256], -inf on unused tokens
+    terms = []
+    for j in range(logits.shape[0]):
+        pos = create_positive_map(outputs["token"][j], range(len(categories)), categories, caption).to(logits.device)
+        pos = pos[pos.sum(-1) > 0]
+        if not len(pos):
+            continue
+        scores = torch.sigmoid(logits[j]) @ (pos / pos.sum(-1, keepdim=True)).T  # [Q, C]
+        p = scores.clamp(1e-6, 1 - 1e-6)
+        ent = (-(p * p.log() + (1 - p) * (1 - p).log()) / math.log(2)).mean(-1)
+        terms.append(((ent ** 2 + 1e-8) ** ita)[scores.max(-1).values > threshold])
+    terms = torch.cat(terms) if terms else logits.new_zeros(0)
+    return (terms.mean() if len(terms) else None), len(terms)
 
 
 def run_fda(args, model, postprocessors, device, logger):
@@ -186,10 +219,14 @@ def run_fda(args, model, postprocessors, device, logger):
     source_loader, target_loader = data.train_loader(source, args), data.train_loader(target, args)
     test_loader, test_gt = data.test_loader(test, args), data.coco_api(test)
     normalize = T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    # target captions name every class of the label map: the target labels must not leak into the entropy term
+    target_classes = list(target.label_map.values())
+    target_caption = " . ".join(target_classes) + " ."
 
     def save(name, ap):
         state = model.state_dict()
-        info = {"exp_name": args.exp_name, "baseline": "fda", "fda_lb": args.fda_lb, "select_AP": ap, "checkpoint": name,
+        info = {"exp_name": args.exp_name, "baseline": "fda", "fda_lb": args.fda_lb, "fda_ent": args.fda_ent,
+                "fda_ita": args.fda_ita, "fda_ent_threshold": args.fda_ent_threshold, "select_AP": ap, "checkpoint": name,
                 "source_train_annotations": args.source_train_annotations,
                 "target_train_annotations": args.target_train_annotations, "seed": args.seed}
         save_domain_expert(args.output_root / f"{name}.safetensors", {k: state[k] for k in keys}, info)
@@ -209,9 +246,18 @@ def run_fda(args, model, postprocessors, device, logger):
             loss_dict = criterion(model(restyled, captions=captions), targets, cap_list, captions)
             loss = sum(loss_dict[k] * criterion.weight_dict[k] for k in loss_dict if k in criterion.weight_dict)
             loss.backward()
+            log = {"TRAIN/epoch": epoch, "TRAIN/loss": loss.item()}
+            if args.fda_ent > 0:  # separate backward: the two forward graphs never coexist in memory
+                n = len(images_t)
+                outputs_t = model(normalize(images_t / 255.0), captions=[target_caption] * n)
+                ent, n_queries = target_entropy(outputs_t, target_caption, target_classes, args.fda_ita,
+                                                args.fda_ent_threshold)
+                if ent is not None:
+                    (args.fda_ent * ent).backward()
+                log.update({"TRAIN/entropy": ent.item() if ent is not None else 0.0, "TRAIN/entropy_queries": n_queries})
             optimizer.step()
             optimizer.zero_grad()
-            logger.log({"TRAIN/epoch": epoch, "TRAIN/loss": loss.item()}, step=epoch * len(pbar) + step)
+            logger.log(log, step=epoch * len(pbar) + step)
             if args.debug and (step + 1) % 10 == 0:
                 break
 

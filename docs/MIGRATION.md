@@ -97,7 +97,13 @@ bare target domain expert.
 
 ### 3.5 FDA
 `--fda_lb` is used (the original always used L = 0.01, which is the default). The original `--fda_ent` /
-`--fda_ita` never reached the loss and are not exposed. A `last` checkpoint is also saved.
+`--fda_ita` never reached the loss (and were wired to the *source* predictions, with a softmax over text tokens).
+New, opt-in: `--fda_ent <w>` (default 0 = Table 2 setting; the FDA paper uses 0.005) adds FDA's entropy
+minimisation on the unlabelled *target* images: the robust entropy `(ent² + 1e-8)^ita` (`--fda_ita`, default 2.0)
+of the binary entropy of each query's per-class score (mean token sigmoid, as at test time), only for queries whose
+best score exceeds `--fda_ent_threshold` (default 0.3). Target captions list every class of the label map, so no
+target label is used. Unit-tested in `tests/test_fda_entropy.py`; not yet run on real data. A `last` checkpoint is
+also saved.
 
 ## 4. Findings about the original code (relevant for the paper)
 
