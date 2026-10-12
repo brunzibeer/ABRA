@@ -96,6 +96,7 @@ bare target domain expert.
 `results.json` records `"oracle": true`.
 
 ### 3.5 FDA
+Verified on CPU against the original `main.py --uda fda` (synthetic images, 3 training steps, same seed and settings): identical losses, bit-identical trained weights (144 tensors) and identical AP.
 `--fda_lb` is used (the original always used L = 0.01, which is the default). The original `--fda_ent` /
 `--fda_ita` never reached the loss (and were wired to the *source* predictions, with a softmax over text tokens).
 New, opt-in: `--fda_ent <w>` (default 0 = Table 2 setting; the FDA paper uses 0.005) adds FDA's entropy
