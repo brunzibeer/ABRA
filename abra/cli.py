@@ -9,6 +9,9 @@ Commands
     fda            FDA unsupervised domain adaptation baseline (paper Table 2)
     diagnose       weight-space diagnostics D1-D3 and Option-2 layer scales (no data)
     report         collect results.json files into one table
+    prepare-data   build the Cityscapes -> Foggy Cityscapes annotation splits (CPU, seconds)
+    data-stats     class-partition statistics of a benchmark (images / instances per class and split)
+    convert-bdd    BDD-format label files -> COCO json (SDGOD splits)
 
 Run ``python -m abra <command> -h`` for the options of a command.
 """
@@ -181,6 +184,12 @@ def build_parser():
     add_diagnose_args(sub.add_parser("diagnose", help="weight-space diagnostics D1-D3 (no data)"))
     from abra.eval.report import add_report_args
     add_report_args(sub.add_parser("report", help="collect results.json files into one table"))
+    from abra.data.prepare import add_prepare_args
+    add_prepare_args(sub.add_parser("prepare-data", help="build the Cityscapes -> Foggy Cityscapes annotation splits"))
+    from abra.data.stats import add_stats_args
+    add_stats_args(sub.add_parser("data-stats", help="class-partition statistics of a benchmark"))
+    from abra.data.bdd import add_bdd_args
+    add_bdd_args(sub.add_parser("convert-bdd", help="BDD-format label files -> COCO json (SDGOD)"))
     return parser
 
 
@@ -192,6 +201,15 @@ def main(argv=None):
     if args.command == "report":
         from abra.eval.report import report
         return report(args)
+    if args.command == "prepare-data":
+        from abra.data.prepare import prepare
+        return prepare(args)
+    if args.command == "data-stats":
+        from abra.data.stats import data_stats
+        return data_stats(args)
+    if args.command == "convert-bdd":
+        from abra.data.bdd import convert_bdd
+        return convert_bdd(args)
     from abra import commands
     handler = {"train-domain": commands.train_domain, "train-expert": commands.train_expert, "eval": commands.evaluate,
                "transport": commands.transport_offline, "migrate": commands.migrate, "fda": commands.fda}[args.command]

@@ -56,7 +56,7 @@ pip install -r requirements.txt
 | ABRA release | [GitHub Releases](https://github.com/brunzibeer/ABRA/releases) | Domain and class expert weights, dataset splits (annotations) and label maps |
 
 The ODVG annotation format is described in [data_format.md](data_format.md).
-<!-- TODO: the split-generation script will be added as tools/prepare_data.py -->
+The splits can also be regenerated with `python -m abra prepare-data` (see [Dataset Preparation](#-dataset-preparation)).
 
 ---
 
@@ -69,6 +69,7 @@ datasets/
 └── cityscapes/
     ├── normal/
     │   ├── annotations/
+    │   │   ├── annotations_{train.jsonl,val.json}       # all images and classes
     │   │   ├── domains/annotations_train_domain.jsonl
     │   │   └── experts/<class>/{annotations_train.jsonl, annotations_val.json}
     │   └── images/{train,val}/<city>/*.png
@@ -76,9 +77,34 @@ datasets/
     │   ├── annotations/  (same structure as normal/)
     │   └── images/{train,val}/<city>/*_foggy_beta_0.02.png
     └── label_maps/
-        ├── top_3.json
+        ├── top_3.json, standard_map.json, uda_map.json
         └── experts/<class>.json
 ```
+
+**Building the splits.** `prepare-data` writes the whole `annotations/` and `label_maps/` tree (CPU, seconds), either
+from the Cityscapes `gtFine` polygons or from the two master files of the release:
+
+```bash
+python -m abra prepare-data --cityscapes_root /path/to/cityscapes --out_dir datasets/cityscapes
+python -m abra prepare-data --train_master normal/annotations/annotations_train.jsonl \
+    --val_master normal/annotations/annotations_val.json --out_dir datasets/cityscapes
+```
+
+Boxes are the extent of the gtFine polygons of the 8 Cityscapes classes. The domain files keep the 3 most frequent
+train classes (car, person, bicycle: Objectification); the per-class files keep the images containing a class and only
+its boxes. Foggy Cityscapes renders the same scenes, so its files are the normal ones with `_foggy_beta_0.02` in the
+image names. `--check_against <dir>` compares every file with an existing tree (the released files are regenerated
+identically; COCO files differ only in `info.date_created`). Options for further experiments:
+
+- `--exclude_unavailable class all`: additional target domain files without the images that contain one
+  (`annotations_train_domain_no_<class>.jsonl`) or any (`..._no_unavailable.jsonl`) unavailable class;
+- `--few_shot 1 5 10 20 30` (`--few_shot_unit images|instances`, `--seed`): target class files with N shots,
+  `experts/<class>/annotations_train_<N>.jsonl`, nested (the 10-shot set contains the 5-shot set).
+
+`python -m abra data-stats` prints the class partition of a benchmark (images and boxes per class and split, share of
+available classes / boxes / images), how many domain-expert images contain unavailable classes, what each strict
+filter leaves, and how many images the per-class evaluation uses. `python -m abra convert-bdd` converts BDD-format
+label files (SDGOD) to COCO json.
 
 `train/` or `val/` is appended to `--root` automatically when the path contains `cityscapes`, `AODRaw` or `bdd`; otherwise pass `--add_split 1`.
 

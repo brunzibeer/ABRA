@@ -9,7 +9,7 @@ The files are in jsonl format, with one json object per line, as follows:
 - Object Detection datasets utilize the ``detection`` field. If dealing with an Object Detection dataset, an additional ``label_map`` is required in the Dataset settings.
 - Visual Grounding datasets employ the ``grounding`` field.  
 
-You can refer to the [tools](./tools/) to convert other anno formats to ovdg format.
+You can refer to the [tools](./tools/) to convert other anno formats to ovdg format. The ABRA splits are built with `python -m abra prepare-data` (see the README).
 ```json
 {
   "filename": "image.jpg",

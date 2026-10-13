@@ -19,6 +19,8 @@ for interpreting results. The original code is available at tag `official` (comm
 | — | new: `eval --eval_classes` (standard all-images protocol), `eval --alpha_file` (per-layer α), `report` |
 | `--output_root`, `--exp_name`, wandb flags | same; every run also writes `run.log`, `metrics.jsonl`, `config.json` |
 | `--model_cfg` | optional (defaults to `groundingdino/config/cfg_odvg.py`), read without `SLConfig` |
+| `cs_to_coco/` scripts (`main.py`, `coco_to_jsonl.py`, `filter_classes.py`, `extract_single_classes.py`, `normal_to_foggy.py`, `extract_single_class_few*.py`) | `python -m abra prepare-data` (see §5) |
+| `cs_to_coco/utils/bdd_to_coco.py`, `count_instances.py` | `python -m abra convert-bdd`, `python -m abra data-stats` |
 
 Removed as dead, broken or deprecated: `abrag` (crashed), `analogy_full`, `abraplus`, calibration (hard-coded
 cluster paths), weighted Procrustes, `--hierarchical_training`, `--log_seen_classes`, `--frcnn*`, `--resume`,
@@ -138,3 +140,17 @@ also saved.
 4. **ABRA without mask equals the projection P_U τ P_V**, which is task addition on square layers (24/66). The mean
    ABRA AP of the GPU golden (5 classes, Cityscapes→Foggy) is 40.54, the task-addition figure in the research plan.
 5. **FDA**: L fixed at 0.01; entropy minimisation never applied (see §3.5).
+
+## 5. Data preparation
+
+`abra prepare-data` ports the original `cs_to_coco` scripts into one pass and writes every file in their byte
+format. Verified 2026-10-13: from the master files of the release, all 29 released files that exist locally
+(5 per-class train files, 10 per-class val files, the normal domain file, the masters, 11 label maps) are regenerated
+identically (COCO files: identical apart from `info.date_created`); from a synthetic `gtFine` tree, the output of the
+original `main.py` + `coco_to_jsonl.py` is reproduced (train identical, val identical apart from the date). The Foggy
+train files were lost; they are the normal ones with the foggy image names (`normal_to_foggy.py` changes only names).
+Changes: the date can be pinned (`--date_created`); few-shot files are seeded per class and nested (the original
+samplers were unseeded by default and drew every N independently, and their files are lost); `convert-bdd` reads files
+in sorted order (ids used to follow the file-system order), makes the time-of-day filter optional and reports
+sequences whose frames would share one `file_name`. Not ported: `pkl_to_coco.py` (pseudo-labels), the visualisation
+scripts, `few_shot.py` (one multi-class file), `new_ids.py` / `rename_classes.py` (generic COCO edits).
