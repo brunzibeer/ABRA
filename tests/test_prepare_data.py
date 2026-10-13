@@ -47,7 +47,7 @@ def built(tmp_path_factory):
     make_cityscapes(tmp / "cityscapes")
     out = tmp / "out"
     run(["--cityscapes_root", str(tmp / "cityscapes"), "--out_dir", str(out), "--exclude_unavailable", "class", "all",
-         "--few_shot", "1", "2", "--top_k", "3", "--date_created", "2026-01-01 00:00:00"])
+         "--few_shot", "1", "2", "--top_k", "3", "--top_k_variants", "1", "2", "--date_created", "2026-01-01 00:00:00"])
     return out
 
 
@@ -77,6 +77,20 @@ def test_domain_file_and_label_maps(built):
     assert len(domain) == 4  # bochum_000001 has no car/person/bicycle
     labels = [(i["category"], i["label"]) for i in domain[0]["detection"]["instances"]]
     assert labels == [("car", 2), ("car", 2), ("person", 1)]  # grouped by first appearance, relabelled by original id
+
+
+def test_top_k_variants_and_multi(built):
+    maps = built / "label_maps"
+    assert json.loads((maps / "top_1.json").read_text()) == {"1": "car"}
+    assert json.loads((maps / "top_2.json").read_text()) == {"1": "person", "2": "car"}
+    ann = built / "fog/annotations"
+    # k = 1 equals the class file of the most frequent class (the original k = 1 runs used experts/car)
+    assert (ann / "domains/annotations_train_domain_top1.jsonl").read_bytes() == \
+        (ann / "experts/car/annotations_train.jsonl").read_bytes()
+    top2 = jsonl(ann / "domains/annotations_train_domain_top2.jsonl")
+    assert {i["category"] for r in top2 for i in r["detection"]["instances"]} == {"car", "person"}
+    multi = json.loads((ann / "multi/rider/annotations_val.json").read_text())
+    assert len(multi["images"]) == 1 and len(multi["annotations"]) == 3  # rider image with its person and bicycle
 
 
 def test_fog_is_normal_with_renamed_images(built):
@@ -114,7 +128,7 @@ def test_check_against_itself(built, tmp_path):
     result = run(["--train_master", str(built / "normal/annotations/annotations_train.jsonl"),
                   "--val_master", str(built / "normal/annotations/annotations_val.json"), "--out_dir", str(tmp_path),
                   "--check_against", str(built)])
-    assert not result["different"] and not result["missing"] and len(result["identical"]) == 49
+    assert not result["different"] and not result["missing"] and len(result["identical"]) == 65
 
 
 @pytest.mark.skipif(not os.environ.get("ABRA_RELEASE_ANNOTATIONS"), reason="set ABRA_RELEASE_ANNOTATIONS")

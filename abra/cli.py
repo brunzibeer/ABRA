@@ -138,7 +138,9 @@ def build_parser():
     add_model_args(p)
     add_test_data_args(p)
     add_train_args(p)
-    p.add_argument("--domain", type=Path, required=True, help="parent domain expert")
+    p.add_argument("--domain", type=Path, default=None,
+                   help="parent domain expert (default: theta_0, the --weights checkpoint: fine-tuning reference / "
+                        "theta_0-residual ablation)")
     p.add_argument("--svft_diag", type=int, default=2, help="SVFT band half-width (off-diagonals)")
     p.add_argument("--svft_zero_init", type=str2bool, default=False,
                    help="start the SVFT band at zero (expert = parent at step 0) instead of the original random init")
@@ -156,6 +158,8 @@ def build_parser():
     p.add_argument("--alpha_search", type=str2bool, default=False,
                    help="ABRA-alpha: pick alpha by AP on --alpha_annotations (default: the test split = oracle)")
     p.add_argument("--alpha_annotations", type=Path, default=None, help="COCO json used to select alpha")
+    p.add_argument("--alpha_metric", default="AP", choices=["AP", "AP50", "AP75"],
+                   help="metric maximised by the alpha search (default AP, as in the paper)")
     p.add_argument("--min_alpha", type=float, default=0.1)
     p.add_argument("--max_alpha", type=float, default=5.0)
     p.add_argument("--alpha_step", type=float, default=0.1)
@@ -164,7 +168,11 @@ def build_parser():
     p = sub.add_parser("transport", help="transport a class residual offline and save it (dense encoding)")
     add_transport_args(p, residual_required=True)
     p.add_argument("--target_domain", type=Path, required=True)
-    p.add_argument("--out", type=Path, required=True, help="output .safetensors")
+    p.add_argument("--out", type=Path, default=None, help="output dense residual .safetensors")
+    p.add_argument("--merged_out", type=Path, default=None,
+                   help="also/instead write theta_T + alpha * R as a domain-expert .safetensors (e.g. to initialise "
+                        "fine-tuning from the transported model)")
+    p.add_argument("--alpha", type=float, default=1.0, help="scale of R in --merged_out")
     p.add_argument("--device", default="cpu", help="device for the legacy Param Delta SVD")
 
     p = sub.add_parser("migrate", help="convert original .pth checkpoints to the new formats")

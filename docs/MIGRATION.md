@@ -14,7 +14,11 @@ for interpreting results. The original code is available at tag `official` (comm
 | `--transporter analogy` | `--method task_addition` (see §3.2) |
 | `--transporter merged --merged_alpha a` | not kept: equals `a`·ABRA + (1−`a`)·task addition |
 | `--abra_mask`, `--alpha_search`, `--min_alpha/--max_alpha/--alpha_step/--alpha_patience`, `--alpha_estimate` | same names on `abra eval` |
-| `--uda fda` | `python -m abra fda` |
+| `--uda fda` (`--svft 1`) | `python -m abra fda` (`--svft 1`, see §3.5) |
+| `--svft 1` without `--finetuning` (SVFT on θ0: fine-tuning reference, θ0-residual ablation) | `train-expert` without `--domain` |
+| `--finetuning <class expert> --svft_ckpt 1 --test 1` (class expert alone) | `eval --domain <its parent> --residual <expert> --method task_addition` (see §4.6) |
+| `--alpha_target ap50/ap75` (later working copy only, not in tag `official`) | `eval --alpha_metric AP50/AP75` |
+| `transported/<cls>/merged.pth` (transported model as a checkpoint) | `transport --merged_out` (θ_T + α·R as a domain-expert file) |
 | `--mse` / `--mse_gt` | `python -m abra diagnose` (D1/D2 compare transported and target-trained residuals in weight space) |
 | — | new: `eval --eval_classes` (standard all-images protocol), `eval --alpha_file` (per-layer α), `report` |
 | `--output_root`, `--exp_name`, wandb flags | same; every run also writes `run.log`, `metrics.jsonl`, `config.json` |
@@ -122,6 +126,9 @@ of the binary entropy of each query's per-class score (mean token sigmoid, as at
 best score exceeds `--fda_ent_threshold` (default 0.3). Target captions list every class of the label map, so no
 target label is used. Unit-tested in `tests/test_fda_entropy.py`; not yet run on real data. A `last` checkpoint is
 also saved.
+`--svft 1` (new, 2026-10-13) trains SVFT residuals instead of the `--trainable` modules, as the original
+`--uda fda --svft 1` used by the Table 2 scripts; checkpoints are then class residuals of `--init` (or of θ0). The CPU
+comparison above covers the default (module) path, which is unchanged; the SVFT path was smoke-tested on CPU only.
 
 ## 4. Findings about the original code (relevant for the paper)
 
@@ -140,6 +147,11 @@ also saved.
 4. **ABRA without mask equals the projection P_U τ P_V**, which is task addition on square layers (24/66). The mean
    ABRA AP of the GPU golden (5 classes, Cityscapes→Foggy) is 40.54, the task-addition figure in the research plan.
 5. **FDA**: L fixed at 0.01; entropy minimisation never applied (see §3.5).
+6. **Class expert evaluated alone** (`--finetuning <class expert> --svft_ckpt 1`, the "Source" rows, EVA*A/B in the
+   SLURM scripts): the parent domain expert is not loaded, and a class-expert checkpoint holds only the SVFT tensors
+   (u, s_pre, s, v of the 66 adapted layers). The evaluated model is therefore θ0 with the adapted weights replaced by
+   θ_S + τ: the 66 biases and the 12 text cross-attention in-projection tensors trained in θ_S are θ0's. The new
+   `eval --domain θ_S --residual τ --method task_addition` evaluates the trained model θ_S + τ, so these rows change.
 
 ## 5. Data preparation
 
@@ -155,6 +167,10 @@ SDGOD (`--benchmark sdgod`): from the per-domain masters (`annotations_train.jso
 every image of a domain, `annotations_test.json` is a random ~25% of it and `annotations_train.jsonl` the rest (no
 overlap, checked; the script that drew the split is lost; one Dusk-Rainy image is named `rain_storm-985` without
 `.jpg` in `annotations_train.json` only).
+Also written (2026-10-13): Cityscapes `multi/<cls>/annotations_val.json` (as SDGOD; used by the multi-class
+evaluations of the SLURM scripts) and, with `--top_k_variants 1 2`, domain files with the k most frequent classes
+(`annotations_train_domain_top<k>.jsonl`, label map `top_<k>.json`; k = 1 equals the `experts/car` file the original
+k = 1 run used, checked on the release).
 Changes: the date can be pinned (`--date_created`); few-shot files are seeded per class and nested (the original
 samplers were unseeded by default and drew every N independently, and their files are lost); `convert-bdd` reads files
 in sorted order (ids used to follow the file-system order), makes the time-of-day filter optional and reports

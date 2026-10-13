@@ -11,13 +11,15 @@ Pipeline (one in-memory pass)::
       -> <domain>/annotations/annotations_{train.jsonl,val.json}       all classes (val = standard protocol)
       -> <domain>/annotations/domains/annotations_train_domain.jsonl   Objectification: top-k classes
       -> <domain>/annotations/experts/<cls>/annotations_{train.jsonl,val.json}
+      -> <domain>/annotations/multi/<cls>/annotations_val.json        images with <cls>, all their boxes
       -> label_maps/{standard_map,top_3,uda_map}.json, label_maps/experts/<cls>.json
     fog = normal with ``_foggy_beta_<beta>`` appended to every image name (same scenes, synthetic fog).
 
-SDGOD (``--benchmark sdgod``): the masters are per weather domain (``<domain>/annotations/annotations_train.jsonl``,
-``annotations_test.json``: the random train/test split of the release, kept as is); the domain, per-class and
-``multi/<cls>/annotations_test.json`` files (images containing a class with all their boxes,
-``extract_multi_classes.py``) are rebuilt from them, with the top-k classes of ``--source_domain`` for every domain.
+``multi/<cls>`` files (``extract_multi_classes.py``): evaluation images containing a class with all their boxes and
+categories (multi-class prompt). SDGOD (``--benchmark sdgod``): the masters are per weather domain
+(``<domain>/annotations/annotations_train.jsonl``, ``annotations_test.json``: the random train/test split of the
+release, kept as is); the domain, per-class and ``multi/`` files are rebuilt from them, with the top-k classes of
+``--source_domain`` for every domain.
 
 Options for the rebuttal experiments: ``--exclude_unavailable`` (domain files of the target without images that
 contain unavailable classes) and ``--few_shot`` (target class files with N images or N instances).
@@ -294,6 +296,9 @@ def add_prepare_args(p):
     g.add_argument("--objectify_classes", nargs="+", default=None,
                    help="classes of the domain files (default: the --top_k most frequent source train classes)")
     g.add_argument("--top_k", type=int, default=3)
+    g.add_argument("--top_k_variants", type=int, nargs="+", default=[],
+                   help="also write domain files with the k most frequent objectified classes, e.g. 1 2 "
+                        "(annotations_train_domain_top<k>.jsonl, label map top_<k>.json): Objectification ablation")
     g.add_argument("--expert_classes", nargs="+", default=None, help="per-class files (default: every class)")
     g.add_argument("--exclude_unavailable", nargs="+", default=["none"], choices=["none", "class", "all"],
                    help="extra target domain files: 'class' drops the images containing one unavailable class "
@@ -373,10 +378,14 @@ def prepare(args):
         written.append(path)
 
     maps = out / "label_maps"
-    top_map = maps / "domains" / f"top_{len(objectified)}.json" if sdgod else maps / f"top_{len(objectified)}.json"
+    variants = sorted({k for k in args.top_k_variants if k != len(objectified)})
+    if any(k < 1 or k > len(objectified) for k in variants):
+        raise SystemExit(f"--top_k_variants must be between 1 and {len(objectified)}")
     emit(maps / "standard_map.json", write_json, {str(k): labels[k] for k in sorted(labels)}, indent=4)
-    emit(top_map, write_json,
-         {str(i): labels[k] for i, k in enumerate(sorted(k for k in labels if labels[k] in objectified), start=1)}, indent=4)
+    for k in [len(objectified)] + variants:
+        classes = objectified[:k]
+        emit((maps / "domains" if sdgod else maps) / f"top_{k}.json", write_json,
+             {str(i): labels[j] for i, j in enumerate(sorted(j for j in labels if labels[j] in classes), start=1)}, indent=4)
     if not sdgod:
         emit(maps / "uda_map.json", write_json,
              {str(i): labels[k] for i, k in enumerate(sorted(k for k in labels if labels[k] in unavailable), start=1)}, indent=4)
@@ -390,6 +399,8 @@ def prepare(args):
         emit(ann / f"annotations_{split}.json", write_json, d_eval)
         domain_records = odvg_select(d_train, objectified)
         emit(ann / "domains" / "annotations_train_domain.jsonl", write_jsonl, domain_records)
+        for k in variants:
+            emit(ann / "domains" / f"annotations_train_domain_top{k}.jsonl", write_jsonl, odvg_select(d_train, objectified[:k]))
         if target and "class" in args.exclude_unavailable:
             for name in unavailable:
                 emit(ann / "domains" / f"annotations_train_domain_no_{name}.jsonl", write_jsonl,
@@ -401,14 +412,14 @@ def prepare(args):
             class_records = odvg_class(d_train, name)
             emit(ann / "experts" / name / "annotations_train.jsonl", write_jsonl, class_records)
             emit(ann / "experts" / name / f"annotations_{split}.json", write_json, coco_class(d_eval, name, date))
-            if sdgod:
-                emit(ann / "multi" / name / f"annotations_{split}.json", write_json, coco_multi(d_eval, name, date))
+            emit(ann / "multi" / name / f"annotations_{split}.json", write_json, coco_multi(d_eval, name, date))
             if target and name in (args.few_shot_classes or unavailable):
                 for n in args.few_shot:
                     emit(ann / "experts" / name / f"annotations_train_{n}.jsonl", write_jsonl,
                          few_shot(class_records, n, args.few_shot_unit, args.seed, name))
 
     manifest = {"benchmark": args.benchmark, "source": source, "objectified": objectified, "unavailable": unavailable,
+                "top_k_variants": variants,
                 "fog_beta": None if sdgod else args.fog_beta, "exclude_unavailable": args.exclude_unavailable,
                 "few_shot": args.few_shot, "few_shot_unit": args.few_shot_unit, "seed": args.seed,
                 "files": {str(p.relative_to(out)): {"sha256": _sha256(p), "bytes": p.stat().st_size} for p in written}}

@@ -201,8 +201,8 @@ python -m abra train-expert \
   --lp_names ref_point_head sampling_offsets --lp_lr 1e-3
 ```
 
-The same command with `--domain` set to the *target* domain expert and target-domain data trains the target-domain
-fine-tuning reference (or residuals of available target classes). For few-shot runs, pass a target
+The same command with `--domain` set to the *target* domain expert and target-domain data trains residuals of
+available target classes; without `--domain` the residual is trained on θ0 (the target-domain fine-tuning reference). For few-shot runs, pass a target
 `experts/<class>/annotations_train_<N>.jsonl` file as `--train_annotations`.
 
 Model selection uses `--test_annotations` by default, as in the paper; `--val_annotations <coco json>` selects on
@@ -232,6 +232,7 @@ python -m abra eval \
 | --- | --- |
 | ABRA | `--method abra` (optionally `--abra_mask banded` or `plain`) |
 | ABRA-α | add `--alpha_search 1`. α is chosen on `--alpha_annotations`; without it, α is chosen on the test split and the result is marked `"oracle": true` |
+| ABRA-α on AP50 / AP75 | add `--alpha_metric AP50` (or `AP75`) |
 | Fixed α | `--alpha 1.3` |
 | Param Δ baseline | `--method param_delta` |
 | Task addition (θ_T + τ) | `--method task_addition` |

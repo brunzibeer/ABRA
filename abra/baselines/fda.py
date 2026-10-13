@@ -9,6 +9,8 @@ Ported from ``utils/fda_engine.py`` (tag ``official``) with the same behaviour:
 - the target split is evaluated before training and after every ``--test_period`` epochs; ``best`` is
   saved when AP improves, except after the first epoch (as in the original code).
 ``--fda_lb`` (band size L) is now honoured; the original code always used L = 0.01, the default.
+``--svft 1`` trains SVFT residuals (as ``--uda fda --svft 1`` in the original) instead of the selected modules;
+the checkpoints are then class residuals of the ``--init`` domain expert (or of theta_0), like ``train-expert``.
 """
 from pathlib import Path
 
@@ -21,10 +23,12 @@ from abra.data import datasets as data
 from abra.data.transforms import make_coco_transforms
 from abra.eval.evaluate import evaluate
 from abra.model import build
-from abra.model.layers import freeze_all, parameter_groups, selected_modules, trainable_keys, unfreeze_modules
+from abra.model.layers import (adapted_linear_layers, freeze_all, parameter_groups, selected_modules, trainable_keys,
+                               unfreeze_modules)
+from abra.model.svft import apply_svft, svft_residuals
 from abra.train.optim import build_optimizer
 from abra.utils.checkpoint import load_checked
-from abra.weights.io import load_domain_expert, save_domain_expert
+from abra.weights.io import content_hash, layer_weights, load_domain_expert, save_domain_expert, save_residual
 from groundingdino.datasets.coco import CocoDetection
 from groundingdino.datasets.odvg import ODVGDataset
 from groundingdino.models.GroundingDINO.groundingdino import create_positive_map
@@ -169,6 +173,11 @@ def add_fda_args(p):
     g.add_argument("--fda_ita", type=float, default=2.0, help="robustness exponent of the entropy loss (FDA: 2.0)")
     g.add_argument("--fda_ent_threshold", type=float, default=0.3,
                    help="entropy only on target queries whose best class score exceeds this")
+    from abra.cli import str2bool
+    g.add_argument("--svft", type=str2bool, default=False,
+                   help="train SVFT residuals on the --trainable layers (original --svft 1) instead of the modules")
+    g.add_argument("--svft_diag", type=int, default=2, help="SVFT band half-width (off-diagonals)")
+    g.add_argument("--svft_zero_init", type=str2bool, default=False, help="start the SVFT band at zero")
     g.add_argument("--fix_size", default=False)
     g.add_argument("--visualize_predictions", default=False)
     g.add_argument("--save_coco_format", default=None)
@@ -199,13 +208,21 @@ def target_entropy(outputs, caption, categories, ita, threshold):
     return (terms.mean() if len(terms) else None), len(terms)
 
 
-def run_fda(args, model, postprocessors, device, logger):
+def run_fda(args, model, postprocessors, device, logger, theta_0=None):
     if args.init:
-        tensors, _ = load_domain_expert(args.init)
+        tensors, parent_info = load_domain_expert(args.init)
         load_checked(model, tensors, name=f"init {args.init}")
     freeze_all(model)
-    unfreeze_modules(model, selected_modules(model, args.trainable))
-    keys = trainable_keys(model)
+    if args.svft:
+        if not args.init:
+            tensors, parent_info = theta_0, {"path": str(args.weights), "sha256": content_hash(theta_0), "kind": "base"}
+        layers = adapted_linear_layers(model, args.trainable)
+        parent_weights = layer_weights(tensors, layers)
+        apply_svft(model, layers, args.svft_diag, zero_init=args.svft_zero_init)
+        print(f"[fda] SVFT on {len(layers)} layers (band half-width {args.svft_diag})")
+    else:
+        unfreeze_modules(model, selected_modules(model, args.trainable))
+        keys = trainable_keys(model)
     criterion = build.build_criterion(args)
     optimizer = build_optimizer(args, parameter_groups(model, args))
 
@@ -224,11 +241,15 @@ def run_fda(args, model, postprocessors, device, logger):
     target_caption = " . ".join(target_classes) + " ."
 
     def save(name, ap):
-        state = model.state_dict()
         info = {"exp_name": args.exp_name, "baseline": "fda", "fda_lb": args.fda_lb, "fda_ent": args.fda_ent,
                 "fda_ita": args.fda_ita, "fda_ent_threshold": args.fda_ent_threshold, "select_AP": ap, "checkpoint": name,
                 "source_train_annotations": args.source_train_annotations,
-                "target_train_annotations": args.target_train_annotations, "seed": args.seed}
+                "target_train_annotations": args.target_train_annotations, "seed": args.seed, "svft": args.svft}
+        if args.svft:
+            save_residual(args.output_root / f"{name}.safetensors", svft_residuals(model, layers), parent_weights,
+                          parent_info, args.svft_diag, info)
+            return
+        state = model.state_dict()
         save_domain_expert(args.output_root / f"{name}.safetensors", {k: state[k] for k in keys}, info)
 
     evaluate(model, postprocessors, test_loader, test_gt, args, device, logger, epoch=0, max_epoch=args.epochs)

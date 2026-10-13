@@ -168,6 +168,8 @@ outputs*/
 .DS_Store
 *.sh
 !scripts/*.sh
+# local SLURM scripts (cluster-specific, not published)
+/slurm/
 *.png
 images/
 tools/dataset

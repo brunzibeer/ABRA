@@ -16,7 +16,8 @@ from abra.train.optim import build_optimizer, build_scheduler
 from abra.transport import TransportContext, transport
 from abra.utils.checkpoint import load_checked
 from abra.utils.run import RunLogger, seed_everything
-from abra.weights.io import (layer_weights, load_domain_expert, load_residual, save_domain_expert, save_residual)
+from abra.weights.io import (content_hash, layer_weights, load_domain_expert, load_residual, save_domain_expert,
+                             save_residual)
 
 
 def _setup(args, command):
@@ -84,12 +85,22 @@ def train_domain(args):
     return _training(args, device, model, postprocessors, logger, save)
 
 
+def svft_parent(args, model, theta_0):
+    """Parent of an SVFT residual: the domain expert ``args.domain`` (loaded into the model), or theta_0 (the base
+    checkpoint, already loaded) when it is not given, e.g. the fine-tuning reference or the theta_0-residual ablation."""
+    if getattr(args, "domain", None):
+        parent, parent_info = load_domain_expert(args.domain)
+        load_checked(model, parent, name=f"parent domain expert {args.domain}")
+        return parent, parent_info
+    print(f"[train] no parent domain expert: SVFT on theta_0 ({args.weights})")
+    return theta_0, {"path": str(args.weights), "sha256": content_hash(theta_0), "kind": "base"}
+
+
 def train_expert(args):
     args.objectify = False  # class experts train on the class captions of the label map
     logger, device = _setup(args, "train-expert")
-    model, postprocessors, _ = _model(args, device)
-    parent, parent_info = load_domain_expert(args.domain)
-    load_checked(model, parent, name=f"parent domain expert {args.domain}")
+    model, postprocessors, theta_0 = _model(args, device)
+    parent, parent_info = svft_parent(args, model, theta_0)
     freeze_all(model)
     layers = adapted_linear_layers(model, args.trainable)
     parent_weights = layer_weights(parent, layers)
@@ -180,26 +191,29 @@ def _alpha_search(args, model, postprocessors, residual, device, logger, test_lo
     for alpha in alphas:
         restore(model, base)
         _apply(model, residual, alpha, args, device)
-        ap = run_eval(model, postprocessors, loader, gt, args, device, logger=None)["AP"]
-        logger.log({"alpha/alpha": alpha, "alpha/AP": ap})
+        ap = run_eval(model, postprocessors, loader, gt, args, device, logger=None)[args.alpha_metric]
+        logger.log({"alpha/alpha": alpha, f"alpha/{args.alpha_metric}": ap})
         if ap > best_ap:
             best_alpha, best_ap, worse = alpha, ap, 0
         elif ap < last_ap:
             worse += 1
         last_ap = ap
-        print(f"[alpha] alpha={alpha:.3f} AP={ap:.3f}" + (" <- best" if best_alpha == alpha else ""))
+        print(f"[alpha] alpha={alpha:.3f} {args.alpha_metric}={ap:.3f}" + (" <- best" if best_alpha == alpha else ""))
         if worse >= args.alpha_patience:
-            print(f"[alpha] early stop: AP decreased {worse} times since the best")
+            print(f"[alpha] early stop: {args.alpha_metric} decreased {worse} times since the best")
             break
     restore(model, base)
     _apply(model, residual, best_alpha, args, device)
-    return {"alpha": best_alpha, "oracle": oracle, "alpha_select_AP": best_ap}
+    return {"alpha": best_alpha, "oracle": oracle, "alpha_metric": args.alpha_metric,
+            f"alpha_select_{args.alpha_metric}": best_ap}
 
 
 # ---------------------------------------------------------------------------- weights utilities
 
 def transport_offline(args):
     from abra.weights.io import save_residual as _save
+    if not (args.out or args.merged_out):
+        raise SystemExit("pass --out (dense residual) and/or --merged_out (theta_T + alpha * R)")
     residual = load_residual(args.residual, parent=args.source_domain)
     target, target_info = load_domain_expert(args.target_domain)
     weights = layer_weights(target, residual.layers)
@@ -211,8 +225,23 @@ def transport_offline(args):
     r = transport(args.method, residual, ctx, **options)
     info = {"transport": args.method, "abra_mask": args.abra_mask, "alpha_estimate": args.alpha_estimate,
             "source_residual": str(args.residual), "source_residual_info": residual.info}
-    _save(args.out, r, weights, target_info, off_diag=None, info=info, encoding="dense")
-    print(f"[transport] {args.method}: {len(r)} layers -> {args.out} (dense residual on {args.target_domain})")
+    if args.out:
+        _save(args.out, r, weights, target_info, off_diag=None, info=info, encoding="dense")
+        print(f"[transport] {args.method}: {len(r)} layers -> {args.out} (dense residual on {args.target_domain})")
+    if args.merged_out:
+        save_domain_expert(args.merged_out, merge(target, r, args.alpha),
+                           {**info, "alpha": args.alpha, "target_domain": str(args.target_domain)})
+        print(f"[transport] {args.method}: theta_T + {args.alpha} * R -> {args.merged_out} (domain-expert file)")
+
+
+def merge(target, r, alpha):
+    """Domain-expert tensors with every transported layer replaced by theta_T + alpha * R (same arithmetic as
+    ``add_residual`` in evaluation, so the merged file evaluates exactly like ``eval --alpha``)."""
+    merged = dict(target)
+    for layer, delta in r.items():
+        w = target[f"{layer}.weight"]
+        merged[f"{layer}.weight"] = w + alpha * delta.to(w)
+    return merged
 
 
 def _migrated_name(path, out_dir, taken):
@@ -256,7 +285,7 @@ def migrate(args):
 def fda(args):
     from abra.baselines.fda import run_fda
     logger, device = _setup(args, "fda")
-    model, postprocessors, _ = _model(args, device)
-    result = run_fda(args, model, postprocessors, device, logger)
+    model, postprocessors, theta_0 = _model(args, device)
+    result = run_fda(args, model, postprocessors, device, logger, theta_0)
     logger.close()
     return result
