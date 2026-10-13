@@ -101,6 +101,11 @@ identically; COCO files differ only in `info.date_created`). Options for further
 - `--few_shot 1 5 10 20 30` (`--few_shot_unit images|instances`, `--seed`): target class files with N shots,
   `experts/<class>/annotations_train_<N>.jsonl`, nested (the 10-shot set contains the 5-shot set).
 
+**SDGOD.** The release ships, per weather domain, `annotations/annotations_{train.jsonl,test.json}` (the random
+train/test split used in the paper). `python -m abra prepare-data --benchmark sdgod --sdgod_root <dir> --out_dir
+datasets/sdgod` rebuilds the domain (top-3 classes of Day-Clear: car, person, truck), per-class and `multi/<class>/`
+files (images containing a class, with all their boxes) of every domain, plus `label_maps/`.
+
 `python -m abra data-stats` prints the class partition of a benchmark (images and boxes per class and split, share of
 available classes / boxes / images), how many domain-expert images contain unavailable classes, what each strict
 filter leaves, and how many images the per-class evaluation uses. `python -m abra convert-bdd` converts BDD-format

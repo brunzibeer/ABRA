@@ -126,6 +126,26 @@ def test_release_is_regenerated(tmp_path):
     assert not result["different"] and len(result["identical"]) >= 29
 
 
+def test_sdgod_layout(built, tmp_path):
+    root = tmp_path / "sdgod"
+    for domain, cs in (("daytime_sunny", "normal"), ("night_rainy", "fog")):
+        ann = root / domain / "annotations"
+        ann.mkdir(parents=True)
+        (ann / "annotations_train.jsonl").write_bytes((built / cs / "annotations/annotations_train.jsonl").read_bytes())
+        (ann / "annotations_test.json").write_bytes((built / cs / "annotations/annotations_val.json").read_bytes())
+    out = tmp_path / "out"
+    run(["--benchmark", "sdgod", "--sdgod_root", str(root), "--out_dir", str(out), "--exclude_unavailable", "all",
+         "--date_created", "2026-01-01 00:00:00"])
+    assert json.loads((out / "label_maps/domains/top_3.json").read_text()) == {"1": "person", "2": "car", "3": "bicycle"}
+    assert not (out / "label_maps/uda_map.json").exists()
+    assert (out / "night_rainy/annotations/domains/annotations_train_domain_no_unavailable.jsonl").exists()
+    assert not (out / "daytime_sunny/annotations/domains/annotations_train_domain_no_unavailable.jsonl").exists()
+    multi = json.loads((out / "daytime_sunny/annotations/multi/bus/annotations_test.json").read_text())
+    assert [c["name"] for c in multi["categories"]] == sorted(prepare.CITYSCAPES_CLASSES)  # renumbered by name
+    assert len(multi["images"]) == 1 and len(multi["annotations"]) == 4  # the bus image keeps its cars and person
+    assert [a["category_id"] for a in multi["annotations"]] == [3, 3, 5, 2]  # car, car, person, bus
+
+
 def test_stats(built):
     a = build_parser().parse_args(["data-stats", "--source_train", str(built / "normal/annotations/annotations_train.jsonl"),
                                    "--target_eval", str(built / "fog/annotations/annotations_val.json"),

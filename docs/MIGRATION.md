@@ -149,6 +149,12 @@ format. Verified 2026-10-13: from the master files of the release, all 29 releas
 identically (COCO files: identical apart from `info.date_created`); from a synthetic `gtFine` tree, the output of the
 original `main.py` + `coco_to_jsonl.py` is reproduced (train identical, val identical apart from the date). The Foggy
 train files were lost; they are the normal ones with the foggy image names (`normal_to_foggy.py` changes only names).
+SDGOD (`--benchmark sdgod`): from the per-domain masters (`annotations_train.jsonl`, `annotations_test.json`), all
+129 files of the server tree are regenerated identically (domain, per-class train/test, `multi/` via a port of
+`extract_multi_classes.py`, label maps). The masters themselves are kept as released: `annotations_train.json` holds
+every image of a domain, `annotations_test.json` is a random ~25% of it and `annotations_train.jsonl` the rest (no
+overlap, checked; the script that drew the split is lost; one Dusk-Rainy image is named `rain_storm-985` without
+`.jpg` in `annotations_train.json` only).
 Changes: the date can be pinned (`--date_created`); few-shot files are seeded per class and nested (the original
 samplers were unseeded by default and drew every N independently, and their files are lost); `convert-bdd` reads files
 in sorted order (ids used to follow the file-system order), makes the time-of-day filter optional and reports

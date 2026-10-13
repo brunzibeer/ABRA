@@ -1,4 +1,4 @@
-"""``abra prepare-data``: build the Cityscapes -> Foggy Cityscapes annotation splits.
+"""``abra prepare-data``: build the annotation splits of a benchmark (Cityscapes -> Foggy Cityscapes, SDGOD).
 
 Port of the original ``cs_to_coco`` scripts (``main.py``, ``coco_to_jsonl.py``, ``filter_classes.py``,
 ``extract_single_classes.py``, ``normal_to_foggy.py``, ``extract_single_class_few*.py``). Every file is written in
@@ -13,6 +13,11 @@ Pipeline (one in-memory pass)::
       -> <domain>/annotations/experts/<cls>/annotations_{train.jsonl,val.json}
       -> label_maps/{standard_map,top_3,uda_map}.json, label_maps/experts/<cls>.json
     fog = normal with ``_foggy_beta_<beta>`` appended to every image name (same scenes, synthetic fog).
+
+SDGOD (``--benchmark sdgod``): the masters are per weather domain (``<domain>/annotations/annotations_train.jsonl``,
+``annotations_test.json``: the random train/test split of the release, kept as is); the domain, per-class and
+``multi/<cls>/annotations_test.json`` files (images containing a class with all their boxes,
+``extract_multi_classes.py``) are rebuilt from them, with the top-k classes of ``--source_domain`` for every domain.
 
 Options for the rebuttal experiments: ``--exclude_unavailable`` (domain files of the target without images that
 contain unavailable classes) and ``--few_shot`` (target class files with N images or N instances).
@@ -237,6 +242,33 @@ def few_shot(records, n, unit, seed, name):
     return out
 
 
+def coco_multi(coco, name, date_created):
+    """Images with >= 1 instance of ``name`` (by image id), with ALL their annotations; categories renumbered 1..K
+    by name (``extract_multi_classes.py``)."""
+    old = {c["id"]: c for c in coco["categories"]}
+    new_id = {cid: i for i, (cid, _) in enumerate(sorted(old.items(), key=lambda x: x[1]["name"]), start=1)}
+    cat = next(c["id"] for c in coco["categories"] if c["name"] == name)
+    by_image = defaultdict(list)
+    for ann in coco["annotations"]:
+        by_image[ann["image_id"]].append(ann)
+    images = {img["id"]: img for img in coco["images"]}
+    selected = sorted({ann["image_id"] for ann in coco["annotations"] if ann["category_id"] == cat})
+    info = coco.get("info", {})
+    out = {"info": {"description": f"Images containing class: {name} (with all their annotations)",
+                    "url": info.get("url", ""), "version": "1.0", "year": info.get("year", 2024),
+                    "contributor": info.get("contributor", ""), "date_created": date_created},
+           "licenses": coco.get("licenses", []), "images": [], "annotations": [],
+           "categories": [{**old[cid], "id": i} for cid, i in sorted(new_id.items(), key=lambda x: x[1])]}
+    for i, img_id in enumerate(selected, start=1):
+        out["images"].append({**images[img_id], "id": i})
+    annotation_id = 1
+    for i, img_id in enumerate(selected, start=1):
+        for ann in by_image[img_id]:
+            out["annotations"].append({**ann, "id": annotation_id, "image_id": i, "category_id": new_id[ann["category_id"]]})
+            annotation_id += 1
+    return out
+
+
 def top_classes(records, k):
     counts = Counter(i["category"] for r in records for i in r["detection"]["instances"])
     return [name for name, _ in counts.most_common(k)]
@@ -245,17 +277,22 @@ def top_classes(records, k):
 # ---------------------------------------------------------------------------------------------- command
 
 def add_prepare_args(p):
-    g = p.add_argument_group("input (gtFine or the master files of the release)")
+    p.add_argument("--benchmark", default="cityscapes", choices=["cityscapes", "sdgod"])
+    g = p.add_argument_group("input: Cityscapes (gtFine or the master files of the release)")
     g.add_argument("--cityscapes_root", type=Path, default=None,
                    help="Cityscapes root with gtFine/{train,val} (and leftImg8bit/, used to skip missing images)")
     g.add_argument("--train_master", type=Path, default=None,
                    help="instead of gtFine/train: ODVG jsonl of all train images and classes")
     g.add_argument("--val_master", type=Path, default=None, help="instead of gtFine/val: COCO json of all val images")
-    g = p.add_argument_group("output")
-    g.add_argument("--out_dir", type=Path, required=True, help="e.g. datasets/cityscapes")
     g.add_argument("--fog_beta", default="0.02", help="Foggy Cityscapes beta in the image names")
+    g = p.add_argument_group("input: SDGOD")
+    g.add_argument("--sdgod_root", type=Path, default=None,
+                   help="folder with <domain>/annotations/annotations_{train.jsonl,test.json} for every domain")
+    g.add_argument("--source_domain", default="daytime_sunny", help="SDGOD source domain (Day-Clear)")
+    g = p.add_argument_group("output")
+    g.add_argument("--out_dir", type=Path, required=True, help="e.g. datasets/cityscapes or datasets/sdgod")
     g.add_argument("--objectify_classes", nargs="+", default=None,
-                   help="classes of the domain files (default: the --top_k most frequent train classes)")
+                   help="classes of the domain files (default: the --top_k most frequent source train classes)")
     g.add_argument("--top_k", type=int, default=3)
     g.add_argument("--expert_classes", nargs="+", default=None, help="per-class files (default: every class)")
     g.add_argument("--exclude_unavailable", nargs="+", default=["none"], choices=["none", "class", "all"],
@@ -287,8 +324,18 @@ def same_file(mine, reference):
     return a == b
 
 
-def prepare(args):
-    date = args.date_created or now()
+def _inputs(args, date):
+    """-> {domain: (train ODVG records, eval COCO dict)}, source domain, eval split name."""
+    if args.benchmark == "sdgod":
+        if not args.sdgod_root:
+            raise SystemExit("pass --sdgod_root")
+        domains = {}
+        for d in sorted(p.name for p in Path(args.sdgod_root).iterdir() if (p / "annotations").is_dir()):
+            ann = Path(args.sdgod_root) / d / "annotations"
+            domains[d] = (read_jsonl(ann / "annotations_train.jsonl"), json.loads((ann / "annotations_test.json").read_text()))
+        if args.source_domain not in domains:
+            raise SystemExit(f"source domain {args.source_domain} not in {sorted(domains)}")
+        return domains, args.source_domain, "test"
     if args.train_master:
         train = read_jsonl(args.train_master)
     elif args.cityscapes_root:
@@ -301,13 +348,22 @@ def prepare(args):
         val = cityscapes_to_coco(args.cityscapes_root, "val", date)
     else:
         raise SystemExit("pass --cityscapes_root or --val_master")
+    # Foggy Cityscapes renders the same scenes: the fog files are the normal ones with the foggy image names
+    return {"normal": (train, val), "fog": (foggy_odvg(train, args.fog_beta), foggy_coco(val, args.fog_beta))}, "normal", "val"
 
+
+def prepare(args):
+    date = args.date_created or now()
+    domains, source, split = _inputs(args, date)
+    sdgod = args.benchmark == "sdgod"
+    train = domains[source][0]
     labels = odvg_categories(train)
     all_classes = [labels[k] for k in sorted(labels)]
     objectified = args.objectify_classes or top_classes(train, args.top_k)
     unavailable = [c for c in all_classes if c not in objectified]
     experts = args.expert_classes or sorted(all_classes)
-    print(f"classes: {all_classes}\nobjectified (available): {objectified}\nunavailable: {unavailable}")
+    print(f"domains: {list(domains)} (source {source})\nclasses: {all_classes}\n"
+          f"objectified (available): {objectified}\nunavailable: {unavailable}")
 
     out = Path(args.out_dir)
     written = []
@@ -317,42 +373,44 @@ def prepare(args):
         written.append(path)
 
     maps = out / "label_maps"
+    top_map = maps / "domains" / f"top_{len(objectified)}.json" if sdgod else maps / f"top_{len(objectified)}.json"
     emit(maps / "standard_map.json", write_json, {str(k): labels[k] for k in sorted(labels)}, indent=4)
-    emit(maps / f"top_{len(objectified)}.json", write_json,
+    emit(top_map, write_json,
          {str(i): labels[k] for i, k in enumerate(sorted(k for k in labels if labels[k] in objectified), start=1)}, indent=4)
-    emit(maps / "uda_map.json", write_json,
-         {str(i): labels[k] for i, k in enumerate(sorted(k for k in labels if labels[k] in unavailable), start=1)}, indent=4)
+    if not sdgod:
+        emit(maps / "uda_map.json", write_json,
+             {str(i): labels[k] for i, k in enumerate(sorted(k for k in labels if labels[k] in unavailable), start=1)}, indent=4)
     for name in experts:
         emit(maps / "experts" / f"{name}.json", write_json, {"1": name}, indent=4)
 
-    for domain in DOMAINS:
-        d_train = train if domain == "normal" else foggy_odvg(train, args.fog_beta)
-        d_val = val if domain == "normal" else foggy_coco(val, args.fog_beta)
+    for domain, (d_train, d_eval) in domains.items():
+        target = domain != source
         ann = out / domain / "annotations"
         emit(ann / "annotations_train.jsonl", write_jsonl, d_train)
-        emit(ann / "annotations_val.json", write_json, d_val)
+        emit(ann / f"annotations_{split}.json", write_json, d_eval)
         domain_records = odvg_select(d_train, objectified)
         emit(ann / "domains" / "annotations_train_domain.jsonl", write_jsonl, domain_records)
-        if domain == "fog":
-            if "class" in args.exclude_unavailable:
-                for name in unavailable:
-                    emit(ann / "domains" / f"annotations_train_domain_no_{name}.jsonl", write_jsonl,
-                         odvg_without(domain_records, [name], d_train))
-            if "all" in args.exclude_unavailable:
-                emit(ann / "domains" / "annotations_train_domain_no_unavailable.jsonl", write_jsonl,
-                     odvg_without(domain_records, unavailable, d_train))
+        if target and "class" in args.exclude_unavailable:
+            for name in unavailable:
+                emit(ann / "domains" / f"annotations_train_domain_no_{name}.jsonl", write_jsonl,
+                     odvg_without(domain_records, [name], d_train))
+        if target and "all" in args.exclude_unavailable:
+            emit(ann / "domains" / "annotations_train_domain_no_unavailable.jsonl", write_jsonl,
+                 odvg_without(domain_records, unavailable, d_train))
         for name in experts:
             class_records = odvg_class(d_train, name)
             emit(ann / "experts" / name / "annotations_train.jsonl", write_jsonl, class_records)
-            emit(ann / "experts" / name / "annotations_val.json", write_json, coco_class(d_val, name, date))
-            if domain == "fog" and name in (args.few_shot_classes or unavailable):
+            emit(ann / "experts" / name / f"annotations_{split}.json", write_json, coco_class(d_eval, name, date))
+            if sdgod:
+                emit(ann / "multi" / name / f"annotations_{split}.json", write_json, coco_multi(d_eval, name, date))
+            if target and name in (args.few_shot_classes or unavailable):
                 for n in args.few_shot:
                     emit(ann / "experts" / name / f"annotations_train_{n}.jsonl", write_jsonl,
                          few_shot(class_records, n, args.few_shot_unit, args.seed, name))
 
-    manifest = {"objectified": objectified, "unavailable": unavailable, "fog_beta": args.fog_beta,
-                "exclude_unavailable": args.exclude_unavailable, "few_shot": args.few_shot,
-                "few_shot_unit": args.few_shot_unit, "seed": args.seed,
+    manifest = {"benchmark": args.benchmark, "source": source, "objectified": objectified, "unavailable": unavailable,
+                "fog_beta": None if sdgod else args.fog_beta, "exclude_unavailable": args.exclude_unavailable,
+                "few_shot": args.few_shot, "few_shot_unit": args.few_shot_unit, "seed": args.seed,
                 "files": {str(p.relative_to(out)): {"sha256": _sha256(p), "bytes": p.stat().st_size} for p in written}}
     write_json(manifest, out / "manifest.json")
     print(f"wrote {len(written)} files under {out} (list and checksums in manifest.json)")
