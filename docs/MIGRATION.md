@@ -147,11 +147,12 @@ comparison above covers the default (module) path, which is unchanged; the SVFT 
 4. **ABRA without mask equals the projection P_U τ P_V**, which is task addition on square layers (24/66). The mean
    ABRA AP of the GPU golden (5 classes, Cityscapes→Foggy) is 40.54, the task-addition figure in the research plan.
 5. **FDA**: L fixed at 0.01; entropy minimisation never applied (see §3.5).
-6. **Class expert evaluated alone** (`--finetuning <class expert> --svft_ckpt 1`, the "Source" rows, EVA*A/B in the
-   SLURM scripts): the parent domain expert is not loaded, and a class-expert checkpoint holds only the SVFT tensors
-   (u, s_pre, s, v of the 66 adapted layers). The evaluated model is therefore θ0 with the adapted weights replaced by
-   θ_S + τ: the 66 biases and the 12 text cross-attention in-projection tensors trained in θ_S are θ0's. The new
-   `eval --domain θ_S --residual τ --method task_addition` evaluates the trained model θ_S + τ, so these rows change.
+6. **Class expert evaluated alone** (`--finetuning <class expert> --svft_ckpt 1`, EVA*A/B of the SLURM scripts): the
+   parent domain expert is not loaded, and a class-expert checkpoint holds only the SVFT tensors (u, s_pre, s, v of
+   the 66 adapted layers). For an expert trained on a domain expert θ_S, the evaluated model is therefore θ0 with the
+   adapted weights replaced by θ_S + τ: the 66 biases and the 12 text cross-attention in-projection tensors trained in
+   θ_S are θ0's. The new `eval --domain θ_S --residual τ --method task_addition` evaluates the trained θ_S + τ.
+   The paper's *Source* baseline is not affected: it is SVFT on θ0 (Sec. 5.1), whose parent is θ0 itself.
 
 ## 5. Data preparation
 

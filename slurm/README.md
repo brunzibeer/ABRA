@@ -319,7 +319,7 @@ source domain is automatic: Cityscapes = the other of `normal`/`fog`, SDGOD = `d
 |---|---|---|
 | `zero_shot` | θ0 | Zero shot |
 | `target` | θT | target domain expert alone |
-| `source` | θS + τ (source class expert) | Source (EVA*B); see section 15 |
+| `source` | class expert on its parent: θS + τ (`exp1`); with `exp9`: θ0 + τ(θ0) = **the paper's Source row** | EVA*B; Table 1 Source = `source exp9` |
 | `task_add` | θT + τ | direct addition (rebuttal R1-Q1); old `analogy`, EVA1B n2f |
 | `param_delta` | Param Δ | Param Δ |
 | `abra` | θT + R_ABRA, α = 1 | **ABRA** (EVA1D) |
@@ -558,9 +558,9 @@ Results:
 
 - **Evaluation weights**: ABRA / Param Δ evaluate θT + α·R with the exact θT; per-class AP moves by up to a few
   tenths (GPU-checked: zero-shot and θT identical, ABRA ≤ 0.28 AP on single classes, ABRA-α same α). MIGRATION §3.1.
-- **`source`**: the old evaluation of a class expert alone (`--svft_ckpt 1`) loaded only the SVFT tensors on θ0, so
-  biases and text cross-attention in-projections were θ0's, not θS's. `source` now evaluates the trained θS + τ,
-  so the Source rows change. MIGRATION §4.6.
+- **`source`**: the old evaluation of a class expert trained on a domain expert, alone (`--svft_ckpt 1`, EVA*A/B),
+  loaded only the SVFT tensors on θ0, so biases and text cross-attention in-projections were θ0's, not θS's; `source`
+  now evaluates the trained θS + τ (MIGRATION §4.6). The paper's Source row (SVFT on θ0, `source exp9`) is not affected.
 - **Seeds**: runs are seeded (`--seed 0`; `dom7` uses 1); the original code was unseeded. GPU training is still not
   bit-reproducible (atomic adds in the deformable attention backward).
 
