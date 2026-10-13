@@ -37,7 +37,7 @@ Contents
 | `transport.sh` | ABRA-transported models as checkpoint files | no | 20 min | classes |
 | `eval.sh` | every evaluation (zero-shot ... ABRA-α) | yes | 30 min | classes |
 | `fda.sh` | FDA baseline (Table 2) | yes | 2.5 h, 50 GB | classes |
-| `diagnose.sh` | weight-space diagnostics, Option 2 α, Option 1 learned transports | no | 3 h, 16 GB, 8 CPUs (about 30 min) | - |
+| `diagnose.sh` | weight-space diagnostics, Option 2 α, Option 1 learned transports | no | 3 h, 64 GB, 8 CPUs | - |
 | `common.sh` | shared settings, sourced by every script (not a job) | | | |
 
 Principles:

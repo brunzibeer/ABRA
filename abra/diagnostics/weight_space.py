@@ -98,7 +98,7 @@ def d2_leave_one_out(pairs, theta_t, transports=("task_addition", "abra"), gamma
     return out
 
 
-def d2_learned(pairs, theta_t, variants, lambdas, iters=5, band_out=None, keep_layer0=False):
+def d2_learned(pairs, theta_t, variants, lambdas, iters=5, band_out=None, keep_layer0=False, progress=None):
     """Option 1: leave-one-class-out error of every learned variant at every lambda (fit on the other classes).
     Returns {variant: {"errors": {lambda: {class: e, "mean": e}}, "best_lambda", "best_error"}}."""
     ctx = TransportContext(target=theta_t)
@@ -121,6 +121,8 @@ def d2_learned(pairs, theta_t, variants, lambdas, iters=5, band_out=None, keep_l
             if row:
                 row["mean"] = sum(row.values()) / len(row)
                 errors[lam] = row
+                if progress:
+                    progress(f"{variant} lambda {lam:g}: mean leave-one-out error {row['mean']:.3f}")
         best = min(errors, key=lambda lam: errors[lam]["mean"]) if errors else None
         out[variant] = {"errors": errors, "best_lambda": best, "best_error": errors[best]["mean"] if errors else None}
     return out, caches, ctx

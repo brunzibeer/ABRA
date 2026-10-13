@@ -1,6 +1,17 @@
 """``abra diagnose``: weight-space diagnostics D1-D3, the Option-2 layer scales and the Option-1 learned transports
 (no data, CPU)."""
 import json
+import resource
+import sys
+import time
+
+_T0 = time.time()
+
+
+def progress(stage):
+    """Elapsed time and peak memory of the process (to see where a run spends time and memory)."""
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1e9 if sys.platform == "darwin" else 1e6)
+    print(f"[diagnose] {time.time() - _T0:7.0f}s  peak {peak:6.2f} GB  {stage}", flush=True)
 
 from abra.diagnostics.weight_space import (d1_residual_similarity, d2_learned, d2_leave_one_out, d3_domain_shift,
                                            fit_layer_scales, summarize)
@@ -33,18 +44,22 @@ def add_diagnose_args(p):
 def diagnose(args):
     theta_s, _ = load_domain_expert(args.source_domain)
     theta_t, _ = load_domain_expert(args.target_domain)
+    progress("domain experts loaded")
     pairs = {cls: (load_residual(s, parent=args.source_domain), load_residual(t, parent=args.target_domain))
              for cls, s, t in args.pair}
+    progress(f"{len(pairs)} residual pairs loaded")
     layers = next(iter(pairs.values()))[0].layers if pairs else sorted(
         k[:-len(".weight")] for k in theta_s if k.endswith(".weight") and theta_s[k].dim() == 2)
     report = {"d3": d3_domain_shift(layer_weights(theta_s, layers), layer_weights(theta_t, layers))}
+    progress("D3 done")
     if pairs:
         report["d1"] = d1_residual_similarity(pairs)
         report["d2"] = d2_leave_one_out(pairs, layer_weights(theta_t, layers), args.transports,
                                         keep_layer0=args.keep_layer0)
+        progress("D1, D2 (fixed transports, Option 2) done")
         if args.learned:
             learned, caches, ctx = d2_learned(pairs, layer_weights(theta_t, layers), args.learned, args.lambdas,
-                                              args.iters, args.band_out, args.keep_layer0)
+                                              args.iters, args.band_out, args.keep_layer0, progress=progress)
             sha = target_hash(ctx, layers)
             for variant, r in learned.items():
                 if r["best_lambda"] is None:
@@ -57,6 +72,7 @@ def diagnose(args):
                 path = f"{args.out}.{variant}.operator.safetensors"
                 save_operator(path, op)
                 r.update(operator=path, deviation=deviation(op))
+                progress(f"operator {variant} (lambda {r['best_lambda']:g}) -> {path}")
             report["learned"] = learned
         alphas = fit_layer_scales(pairs, args.gamma, args.keep_layer0)
         with open(f"{args.out}.alpha.json", "w") as f:
