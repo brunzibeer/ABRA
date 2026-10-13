@@ -20,7 +20,7 @@ for interpreting results. The original code is available at tag `official` (comm
 | `--alpha_target ap50/ap75` (later working copy only, not in tag `official`) | `eval --alpha_metric AP50/AP75` |
 | `transported/<cls>/merged.pth` (transported model as a checkpoint) | `transport --merged_out` (θ_T + α·R as a domain-expert file) |
 | `--mse` / `--mse_gt` | `python -m abra diagnose` (D1/D2 compare transported and target-trained residuals in weight space) |
-| — | new: `eval --eval_classes` (standard all-images protocol), `eval --alpha_file` (per-layer α), `report` |
+| — | new: `eval --eval_classes` (standard all-images protocol), `eval --alpha_file` (per-layer α), `report`; `diagnose --learned` + `eval --method learned --operator` (transport learned from the available classes, options.pdf Option 1, `abra/transport/learned.py`) |
 | `--output_root`, `--exp_name`, wandb flags | same; every run also writes `run.log`, `metrics.jsonl`, `config.json` |
 | `--model_cfg` | optional (defaults to `groundingdino/config/cfg_odvg.py`), read without `SLConfig` |
 | `cs_to_coco/` scripts (`main.py`, `coco_to_jsonl.py`, `filter_classes.py`, `extract_single_classes.py`, `normal_to_foggy.py`, `extract_single_class_few*.py`) | `python -m abra prepare-data` (see §5) |

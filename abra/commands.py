@@ -131,8 +131,21 @@ def _transported(args, model, device, residual):
     if args.alpha_estimate and residual.source_sigma is None:
         source = layer_weights(load_domain_expert(args.source_domain or residual.info["parent"])[0], layers)
     ctx = TransportContext(target=target, source=source, device=str(device))
-    options = {"mask": args.abra_mask, "norm_preserving": args.alpha_estimate} if args.method == "abra" else {}
-    return transport(args.method, residual, ctx, **options)
+    return transport(args.method, residual, ctx, **_transport_options(args))
+
+
+def _transport_options(args):
+    if args.method == "abra":
+        return {"mask": args.abra_mask, "norm_preserving": args.alpha_estimate}
+    if args.method == "learned":
+        from abra.transport.learned import load_operator
+        if not args.operator:
+            raise SystemExit("--method learned needs --operator (written by `abra diagnose --learned`)")
+        op = load_operator(args.operator)
+        print(f"[transport] learned operator {args.operator}: {op.variant}, lambda {op.lam:g}, fitted on "
+              f"{', '.join(op.info.get('classes', []))}")
+        return {"operator": op}
+    return {}
 
 
 def evaluate(args):
@@ -153,6 +166,8 @@ def evaluate(args):
               + (f", checksum error {check:.1e}" if check is not None else " (original checkpoint, no checksum)"))
         r = _transported(args, model, device, residual)
         result.update(method=args.method, alpha=args.alpha)
+        if args.method == "learned":
+            result.update(operator=str(args.operator))
         if args.alpha_file:
             alpha = json.loads(Path(args.alpha_file).read_text())
             missing = set(r) - set(alpha)
@@ -221,9 +236,9 @@ def transport_offline(args):
     if args.alpha_estimate and residual.source_sigma is None:
         source = layer_weights(load_domain_expert(args.source_domain or residual.info["parent"])[0], residual.layers)
     ctx = TransportContext(target=weights, source=source, device=args.device)
-    options = {"mask": args.abra_mask, "norm_preserving": args.alpha_estimate} if args.method == "abra" else {}
-    r = transport(args.method, residual, ctx, **options)
+    r = transport(args.method, residual, ctx, **_transport_options(args))
     info = {"transport": args.method, "abra_mask": args.abra_mask, "alpha_estimate": args.alpha_estimate,
+            "operator": str(args.operator) if args.operator else None,
             "source_residual": str(args.residual), "source_residual_info": residual.info}
     if args.out:
         _save(args.out, r, weights, target_info, off_diag=None, info=info, encoding="dense")

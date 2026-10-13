@@ -113,8 +113,11 @@ def add_transport_args(p, residual_required):
     g.add_argument("--residual", type=Path, required=residual_required, help="class residual (source class expert)")
     g.add_argument("--source_domain", type=Path, default=None,
                    help="parent domain expert of --residual (only if the path stored in the residual is not valid here)")
-    g.add_argument("--method", default="abra", choices=["abra", "param_delta", "task_addition"],
-                   help="abra (rotation), param_delta (Param Delta baseline) or task_addition (theta_T + tau)")
+    g.add_argument("--method", default="abra", choices=["abra", "param_delta", "task_addition", "learned"],
+                   help="abra (rotation), param_delta (Param Delta baseline), task_addition (theta_T + tau) or learned "
+                        "(Option 1: maps fitted on the available classes, needs --operator)")
+    g.add_argument("--operator", type=Path, default=None,
+                   help="--method learned: operator file written by `abra diagnose --learned`")
     g.add_argument("--abra_mask", default=None, choices=["plain", "banded"])
     g.add_argument("--alpha_estimate", type=str2bool, default=False,
                    help="ABRA: scale each layer by ||sigma_T|| / ||sigma_S||")

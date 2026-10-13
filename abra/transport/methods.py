@@ -66,3 +66,13 @@ def param_delta(residual, ctx):
             u_t, _, vh_t = ctx.target_svd(layer)
             out[layer] = u_t @ coeffs.double() @ vh_t
     return out
+
+
+@register("learned")
+def learned(residual, ctx, operator=None):
+    """Transport learned from the available classes (Option 1, ``abra/transport/learned.py``): needs the operator
+    fitted by ``abra diagnose --learned`` (``--operator`` in eval / transport)."""
+    from abra.transport.learned import apply_operator
+    if operator is None:
+        raise ValueError("the learned transport needs an operator file (--operator, written by `abra diagnose --learned`)")
+    return apply_operator(operator, residual, ctx)
