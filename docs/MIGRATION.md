@@ -95,8 +95,23 @@ bare target domain expert.
 `--alpha_annotations` selects α on a given split. Without it α is selected on the test split, as before, and
 `results.json` records `"oracle": true`.
 
+Measured on the GPU (2026-10-12, original and new code in the same job on one Quadro RTX 5000, grid 0.1…5.0 step
+0.1, patience 5, α selected on the test split as in the paper): the **same α in all five classes**, final AP within
+0.1. Along the α curves most points agree within 0.1 AP; the largest differences are on `train` (up to 1.0 AP at
+α = 1.8, see §3.1: 23 boxes) and single points on `rider` (α = 0.4, −0.47) and `truck` (α = 0.1, +0.31), in both
+directions and away from the selected α. They come from the exact θ_T evaluation (§3.1).
+
+| ABRA-α (Cityscapes → Foggy) | bus | motorcycle | rider | train | truck | mean |
+| --- | --- | --- | --- | --- | --- | --- |
+| α, original code | 1.1 | 0.9 | 1.0 | 1.4 | 1.1 | |
+| α, new code | 1.1 | 0.9 | 1.0 | 1.4 | 1.1 | |
+| AP, original code | 57.238 | 30.095 | 42.270 | 38.550 | 38.613 | 41.353 |
+| AP, new code | 57.225 | 30.191 | 42.286 | 38.528 | 38.596 | 41.365 |
+
 ### 3.5 FDA
 Verified on CPU against the original `main.py --uda fda` (synthetic images, 3 training steps, same seed and settings): identical losses, bit-identical trained weights (144 tensors) and identical AP.
+Not yet compared on real data on the GPU: the check script (`run_fda_alpha.sh`, 2026-10-12) skipped it because the
+Foggy `bus` training list (`fog/annotations/experts/bus/annotations_train.jsonl`) is not on the GPU server.
 `--fda_lb` is used (the original always used L = 0.01, which is the default). The original `--fda_ent` /
 `--fda_ita` never reached the loss (and were wired to the *source* predictions, with a softmax over text tokens).
 New, opt-in: `--fda_ent <w>` (default 0 = Table 2 setting; the FDA paper uses 0.005) adds FDA's entropy

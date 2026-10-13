@@ -59,3 +59,5 @@ evaluation change in `docs/MIGRATION.md` §3.1 (per-class table there) and were 
 in `gpu_golden.json` come from the `train` class run (`check_gpu_new_cli.py` uses `train` when it is in
 `--classes`, `run_gpu_golden.py` uses the first class): compare traces only between runs on the same class.
 Paths in `gpu_golden.json` were made generic (`<abraout>/...`) before publishing.
+A second same-node check (original vs new code, 2026-10-12) of ABRA-α selects the same α in all five classes with
+final AP within 0.1 (table in `docs/MIGRATION.md` §3.4). FDA was verified bit-identical on CPU only (§3.5).
