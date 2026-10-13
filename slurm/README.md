@@ -19,7 +19,7 @@ Contents
 10. [Transported models: `transport.sh`](#10-transported-models-transportsh)
 11. [Evaluation: `eval.sh`](#11-evaluation-evalsh)
 12. [FDA baseline: `fda.sh`](#12-fda-baseline-fdash)
-13. [Recipes: paper tables, rebuttal experiments, Option 1](#13-recipes-paper-tables-and-rebuttal-experiments)
+13. [Recipes: paper tables, rebuttal experiments, Option 1, rebuttal batch](#13-recipes-paper-tables-and-rebuttal-experiments)
 14. [Old script -> new call](#14-old-script---new-call)
 15. [What changed with respect to the old scripts](#15-what-changed-with-respect-to-the-old-scripts)
 16. [Monitoring and troubleshooting](#16-monitoring-and-troubleshooting)
@@ -107,6 +107,8 @@ All defined in `common.sh`; any of them can be overridden for one submission by 
 | `TARGET_DOMAIN` | `$CKPT/domains/<b>/<target>/dom1/$CKPT_FILE` | `eval.sh`: target domain expert (`%s` = class) |
 | `ALPHA_ANN` | unset | `eval.sh`: COCO json (`%s` = class) on which α is selected (otherwise the test split = oracle) |
 | `CLASS_SET` | `unavailable` | `eval.sh`: `available` evaluates the transported available classes |
+| `EXPERT_CKPT`, `EXPERT_FILE` | `CKPT`, `CKPT_FILE` | `eval.sh`: where class experts are read (e.g. new experts with the original domain experts) |
+| `RUN_TAG` | unset | `eval.sh`: label appended to the run name, so experiments with the same setting/class do not share a folder |
 | `FT_DOMAIN` | target domain | `eval.sh ... ft`: domain the FT residual was trained on |
 
 **Original vs new checkpoints.** By default everything reads the original checkpoints, so new evaluations reproduce
@@ -326,7 +328,10 @@ source domain is automatic: Cityscapes = the other of `normal`/`fog`, SDGOD = `d
 | `abra_alpha` | ABRA-α: α ∈ [0.1, 10), step 0.1, patience 10, max AP | **ABRA-α** (EVA1F) |
 | `abra_alpha_ap50`, `abra_alpha_ap75` | same, α maximising AP50 / AP75 | EVA1I/J, SDGOD G/H, I/L |
 | `ft` | θ0 + an FT residual (`fts/<b>/<FT_DOMAIN>/<variant>_<cls>`, variant default `ft2`) | Fine-tuning reference; EVA8A |
+| `abra_oracle` | ABRA with the class's oracle α fixed (`ALPHA_MAP`, default Cityscapes values 1.1/0.9/1.0/1.4/1.1) | ABRA-α as a fixed model |
+| `ftfull` | a fully fine-tuned checkpoint `fts/<b>/<FT_DOMAIN>/<variant>_<cls>` (default `ft5`) | Fine-tuning row |
 | `learned` | θT + learned transport of τ (Option 1; `LEARNED=<variant>`, operator from `diagnose.sh` or `OPERATOR=<file>`) | new (13.9) |
+| `<setting>_std` | same model under the standard protocol: all target test images, `--eval_classes <cls>` | R1-Q5 |
 | `<setting>_multi` | same model on `multi/<cls>/` | EVA*A / EVA*C |
 
 **Test files.** Per class (default): `<target>/annotations/experts/<cls>/annotations_<val|test>.json`, the images
@@ -518,6 +523,23 @@ the 3 available classes, predict the third; e < 1 = better than task addition). 
    The operator stores the hash of the target domain expert it was fitted on and refuses any other θT. The same
    operator also works offline: `python -m abra transport --method learned --operator <file> --residual <τ_S>
    --target_domain <θT> --merged_out <file>`.
+
+### 13.10 Rebuttal batch: `rebuttal.sh`
+
+`bash slurm/rebuttal.sh` (on the login node, after `slurm/data.sh` has finished) submits every job of the rebuttal
+tables with SLURM dependencies (each evaluation waits for its training) and writes the job list to
+`$RUNS/rebuttal_jobs_<date>.txt`. Table 1 of the paper is not recomputed: each table has its own reference rows from
+the same code. Runs land in `$RUNS/eval/cityscapes/fog/<setting>[_std][_<RUN_TAG>]_<expert>_<class>/results.json`.
+
+| Table | Rows (folders) | Trainings it waits for |
+|---|---|---|
+| R1 base of the class residual | `target_exp1_*` (θT), `source_exp9_*` (θ0+τ(θ0)), `task_add_exp9_*` (θT+τ(θ0)), `task_add_exp1_*` (θT+τ(θS)) | exp9 (5 classes) |
+| R2 strict θT | `abra_thetaT_ref_*`, `abra_strict_all_*`, `abra_strict_cls_*` (+ `target_...` for θT alone) | dom1 fog retrained, no_unavailable, no_train, no_bus |
+| R3 protocols | `{zero_shot,param_delta,abra,abra_oracle,ftfull,source}[_std]_*` | exp9 (Source) |
+| R5 k ablation | `abra_k1_exptop1_*`, `abra_k2_exptop2_*`, `abra_k3_exp1_*` (train, bus) | dom1/top1/top2 normal+fog, exp1/exptop1/exptop2 |
+
+The Fine-tuning row is evaluated from `fts/cityscapes/fog/ft5_<cls>` (full fine-tuning from θ0, paper Sec. 5.1): if
+its per-class numbers do not reproduce Table 1 (58.75, 31.22, 43.87, 32.95, 40.03), the row used another folder.
 
 ---
 
