@@ -7,7 +7,7 @@ is added to theta_T.
 import torch
 
 from abra.transport.base import register
-from abra.weights.svd import band_mask
+from abra.transport.masks import mask_weights, parse_mask
 
 
 @register("task_addition")
@@ -18,26 +18,23 @@ def task_addition(residual, ctx):
 
 @register("abra")
 def abra(residual, ctx, mask=None, off_diag=None, norm_preserving=False):
-    """Aligned Basis Relocation: R = U_T M(U_T^T tau V_T) V_T^T.
+    """Aligned Basis Relocation: R = U_T (W * (U_T^T tau V_T)) V_T^T.
 
     Without a mask this is the projection of tau onto the target singular subspaces (identical to
-    task addition for square layers). ``mask`` restricts the target coefficients to the SVFT band
-    (``banded``: same pattern as the source coefficients) or to the diagonal (``plain``).
+    task addition for square layers). ``mask`` (see ``abra/transport/masks.py``) weights the target
+    coefficients: hard masks of any shape (``plain`` diagonal, ``banded`` SVFT band, ``band:W``,
+    ``block:R``, ``score``, ``topk:P``) or soft ones (``band:W:G``, ``gauss:S``, ``exp:S``).
     ``norm_preserving`` scales each layer by ||sigma_T|| / ||sigma_S|| (original ``--alpha_estimate``).
     """
+    parse_mask(mask)   # fail before any SVD on a malformed spec
     out = {}
     for layer, delta in residual.delta.items():
         u_t, sigma_t, vh_t = ctx.target_svd(layer)
         coeffs = u_t.T @ delta.double() @ vh_t.T
-        if mask == "banded":
-            if residual.coefficients is not None:
-                coeffs = coeffs * (residual.coefficients[layer] != 0)
-            else:
-                coeffs = coeffs * band_mask(coeffs.shape[0], off_diag or residual.info["off_diag"])
-        elif mask == "plain":
-            coeffs = coeffs * torch.eye(*coeffs.shape, dtype=coeffs.dtype)
-        elif mask is not None:
-            raise ValueError(f"unknown ABRA mask {mask!r}")
+        if mask is not None:
+            pattern = residual.coefficients[layer] if residual.coefficients is not None else None
+            coeffs = coeffs * mask_weights(mask, coeffs, svft_pattern=pattern,
+                                           off_diag=off_diag or residual.info.get("off_diag"))
         if norm_preserving:
             sigma_s = residual.source_sigma[layer] if residual.source_sigma else ctx.source_svd(layer)[1]
             coeffs = coeffs * (sigma_t.norm() / (sigma_s.norm() + 1e-8))

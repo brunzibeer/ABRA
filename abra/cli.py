@@ -108,6 +108,15 @@ def add_optim_args(p):
     g.add_argument("--object_loss_w", type=float, default=1.0, help="weight of the 'object' loss (Objectification)")
 
 
+def _abra_mask(spec):
+    from abra.transport.masks import parse_mask
+    try:
+        parse_mask(spec)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
+    return spec
+
+
 def add_transport_args(p, residual_required):
     g = p.add_argument_group("transport")
     g.add_argument("--residual", type=Path, required=residual_required, help="class residual (source class expert)")
@@ -118,7 +127,9 @@ def add_transport_args(p, residual_required):
                         "(Option 1: maps fitted on the available classes, needs --operator)")
     g.add_argument("--operator", type=Path, default=None,
                    help="--method learned: operator file written by `abra diagnose --learned`")
-    g.add_argument("--abra_mask", default=None, choices=["plain", "banded"])
+    g.add_argument("--abra_mask", default=None, type=_abra_mask,
+                   help="ABRA coefficient mask: plain | banded | band:W[:G] | block:R[:G] | gauss:S | exp:S | score[:T] | "
+                        "topk:P (hard masks of any shape, soft masks with G / S; see abra/transport/masks.py)")
     g.add_argument("--alpha_estimate", type=str2bool, default=False,
                    help="ABRA: scale each layer by ||sigma_T|| / ||sigma_S||")
 
