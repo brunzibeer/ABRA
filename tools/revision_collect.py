@@ -28,6 +28,9 @@ LABELS = {   # label (without _std) -> spec method id
     "ft_fda": "fda", "ft_fdabest": "fda_best", "param_delta_exp1": "param_delta", "abra_exp1": "abra",
     "abra_alpha_exp1": "abra_alpha", "abra_oracle_exp1": "abra_alpha", "ft_ft4": "abra_init_svft",
     "ft_fda_abra": "abra_init_fda", "ft_fda_abrabest": "abra_init_fda_best", "abra_fig4sup_exp2": "fig4_supervised",
+    # Fig. 4 "Zero shot w/ Obj.": candidate readings (slurm/revision.sh fig4)
+    "zero_shot_obj_exp1": "fig4_theta0_object_prompt", "target_obj_exp1": "fig4_thetaT_object_prompt",
+    "zero_shot_multi_exp1": "fig4_theta0_multi",
 }
 RESULT_COLUMNS = ["exp_id", "benchmark", "target_domain", "method", "class", "protocol", "alpha", "n_images", "n_gt",
                   "mAP", "AP50", "AP75", "checkpoint_id"]
@@ -70,6 +73,8 @@ def counts(test_json, cls):
     """(images, instances of ``cls``) of a COCO json: the images and ground truth an evaluation uses."""
     data = json.loads(Path(test_json).read_text())
     ids = {c["id"] for c in data["categories"] if c["name"] == cls}
+    if not ids and len(data["categories"]) == 1:   # per-class file with its category renamed ("object")
+        ids = {data["categories"][0]["id"]}
     return len(data["images"]), sum(1 for a in data["annotations"] if a["category_id"] in ids)
 
 
@@ -92,8 +97,9 @@ def exp_id(bench, method, protocol):
         return {"fda": "E4", "fda_best": "E4", "param_delta": "E5"}.get(method, "E6")
     if protocol == "standard":
         return "E3"
-    return {"abra_init_svft": "E2", "abra_init_fda": "E2", "abra_init_fda_best": "E2",
-            "fig4_supervised": "E10"}.get(method, "E1")
+    if method.startswith("fig4"):
+        return "E10"
+    return {"abra_init_svft": "E2", "abra_init_fda": "E2", "abra_init_fda_best": "E2"}.get(method, "E1")
 
 
 def collect_results(root):
@@ -101,7 +107,7 @@ def collect_results(root):
     for name, res, config in runs(root):
         bench, target, label, cls = parse_run(name)
         args = config["args"]
-        protocol = "standard" if args.get("eval_classes") else "per_class"
+        protocol = "standard" if args.get("eval_classes") else "multi" if "_multi_" in label else "per_class"
         method = LABELS.get(label.replace("_std_", "_"))
         if method is None:
             print(f"skipped (no method for label {label!r}): {name}", file=sys.stderr)
