@@ -159,8 +159,9 @@ class FDASourceDataset(ODVGDataset):
 
 def add_fda_args(p):
     g = p.add_argument_group("FDA data")
-    g.add_argument("--source_root", type=Path, required=True, help="source image root (train/ is appended)")
-    g.add_argument("--target_root", type=Path, required=True, help="target image root (train/, val/ are appended)")
+    g.add_argument("--source_root", type=Path, required=True, help="source image root (train/ is appended, see --add_split)")
+    g.add_argument("--target_root", type=Path, required=True,
+                   help="target image root (train/, val/ are appended, see --add_split)")
     g.add_argument("--source_train_annotations", type=Path, required=True, help="labelled source ODVG jsonl")
     g.add_argument("--target_train_annotations", type=Path, required=True, help="target ODVG jsonl (labels unused)")
     g.add_argument("--target_test_annotations", type=Path, required=True, help="target COCO json for evaluation")
@@ -178,6 +179,9 @@ def add_fda_args(p):
                    help="train SVFT residuals on the --trainable layers (original --svft 1) instead of the modules")
     g.add_argument("--svft_diag", type=int, default=2, help="SVFT band half-width (off-diagonals)")
     g.add_argument("--svft_zero_init", type=str2bool, default=False, help="start the SVFT band at zero")
+    g.add_argument("--add_split", type=str2bool, default=None,
+                   help="append train/ or val/ to the image roots (default: only for cityscapes, AODRaw, bdd roots; "
+                        "SDGOD has no split folders)")
     g.add_argument("--fix_size", default=False)
     g.add_argument("--visualize_predictions", default=False)
     g.add_argument("--save_coco_format", default=None)
@@ -226,11 +230,14 @@ def run_fda(args, model, postprocessors, device, logger, theta_0=None):
     criterion = build.build_criterion(args)
     optimizer = build_optimizer(args, parameter_groups(model, args))
 
-    source = FDASourceDataset(root=Path(args.source_root) / "train", anno=args.source_train_annotations,
+    source = FDASourceDataset(root=data.image_folder(args.source_root, "train", args.add_split),
+                              anno=args.source_train_annotations,
                               label_map_anno=args.label_map, max_labels=args.max_labels, transforms=None)
-    target = FDASourceDataset(root=Path(args.target_root) / "train", anno=args.target_train_annotations,
+    target = FDASourceDataset(root=data.image_folder(args.target_root, "train", args.add_split),
+                              anno=args.target_train_annotations,
                               label_map_anno=args.label_map, max_labels=args.max_labels, transforms=None)
-    test = CocoDetection(img_folder=Path(args.target_root) / "val", ann_file=args.target_test_annotations,
+    test = CocoDetection(img_folder=data.image_folder(args.target_root, "val", args.add_split),
+                         ann_file=args.target_test_annotations,
                          transforms=make_coco_transforms("val", fix_size=args.fix_size, args=args),
                          return_masks=args.masks, aux_target_hacks=None)
     source_loader, target_loader = data.train_loader(source, args), data.train_loader(target, args)

@@ -203,11 +203,14 @@ def _alpha_search(args, model, postprocessors, residual, device, logger, test_lo
     base = snapshot(model, residual)
     alphas = np.arange(args.min_alpha, args.max_alpha, args.alpha_step).tolist()
     best_alpha, best_ap, last_ap, worse = alphas[0], -float("inf"), -float("inf"), 0
+    curve = []   # every alpha with the three metrics of the same pass (alpha_search.csv of the revision)
     for alpha in alphas:
         restore(model, base)
         _apply(model, residual, alpha, args, device)
-        ap = run_eval(model, postprocessors, loader, gt, args, device, logger=None)[args.alpha_metric]
-        logger.log({"alpha/alpha": alpha, f"alpha/{args.alpha_metric}": ap})
+        stats = run_eval(model, postprocessors, loader, gt, args, device, logger=None)
+        ap = stats[args.alpha_metric]
+        curve.append({"alpha": round(alpha, 6), **{k: stats[k] for k in ("AP", "AP50", "AP75")}})
+        logger.log({"alpha/alpha": alpha, **{f"alpha/{k}": stats[k] for k in ("AP", "AP50", "AP75")}})
         if ap > best_ap:
             best_alpha, best_ap, worse = alpha, ap, 0
         elif ap < last_ap:
@@ -220,7 +223,7 @@ def _alpha_search(args, model, postprocessors, residual, device, logger, test_lo
     restore(model, base)
     _apply(model, residual, best_alpha, args, device)
     return {"alpha": best_alpha, "oracle": oracle, "alpha_metric": args.alpha_metric,
-            f"alpha_select_{args.alpha_metric}": best_ap}
+            f"alpha_select_{args.alpha_metric}": best_ap, "alpha_curve": curve}
 
 
 # ---------------------------------------------------------------------------- weights utilities

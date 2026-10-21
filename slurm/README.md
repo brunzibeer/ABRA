@@ -374,9 +374,15 @@ the original runs), SVFT (`--svft 1`), 12 epochs, batch 4, weight decay 0, 50 GB
 | `fda` | θ0 | 1e-2 / 1e-3 |
 | `fda_abra` | transported model (`MERGED_TEMPLATE`) | 1e-6 / 1e-7 |
 
-The target test split is evaluated before training and after every epoch; `best.safetensors` is a residual of the
-starting model. The original FDA built no learning-rate scheduler; `abra fda` does the same. Evaluate a result with
-`eval --domain <start> --residual <run>/best.safetensors --method task_addition` (start = nothing for `fda`).
+The target test split is evaluated before training and after every epoch; `best.safetensors` (best epoch on that
+test split, the original rule) and `last.safetensors` (after the last epoch) are residuals of the starting model. The
+original FDA built no learning-rate scheduler; `abra fda` does the same. Images are resized to 1024x512 and an epoch
+pairs source and target batches, so it has min(#source, #target) batches. Evaluate a result with
+`eval --domain <start> --residual <run>/last.safetensors --method task_addition` (start = nothing for `fda`), or with
+`eval.sh ... ft <label>` and `FT_CKPT=<run>/last.safetensors` (+ `FT_PARENT=<start>`, %s = class).
+
+SDGOD (Day-Clear -> one target domain, `fda` only): `BENCH=sdgod TGT=<domain> sbatch --array=0-3 --time=12:00:00
+slurm/fda.sh fda` (output `$RUNS/uda/sdgod/<domain>/fda_<cls>`).
 
 ---
 
@@ -540,6 +546,26 @@ the same code. Runs land in `$RUNS/eval/cityscapes/fog/<setting>[_std][_<RUN_TAG
 
 The Fine-tuning row is evaluated from `fts/cityscapes/fog/ft5_<cls>` (full fine-tuning from θ0, paper Sec. 5.1): if
 its per-class numbers do not reproduce Table 1 (58.75, 31.22, 43.87, 32.95, 40.03), the row used another folder.
+
+### 13.11 Revision batch: `revision.sh`
+
+`bash slurm/revision.sh <group>` (login node) submits one group of the revision experiments (E1-E10) and writes the job
+list to `$RUNS/jobs_<group>_<date>.txt`; `RUNS` defaults to `$ABRAOUT/revision`, checkpoints are the original ones.
+Every evaluation is pinned to one GPU model (`GPU=<constraint>`): results move by a few hundredths across models and
+the legacy Param Delta SVD runs on the GPU.
+
+| Group | What |
+|---|---|
+| `check` | provenance (commit, GPU) of the rebuttal runs and every checkpoint / annotation file needed; submits nothing |
+| `train` | FDA from θ0 and from ABRA on Cityscapes (retrained, best + last), FDA on the 4 SDGOD targets |
+| `evals` | Cityscapes Table 1 rows, ABRA-α searches, standard protocol, Table 2 SVFT-from-ABRA, Fig. 4 Supervised; SDGOD rows |
+| `stats` | `tools/revision_stats.py` (dataset counts) and `tools/projection_stats.py` (projection of the residuals), CPU |
+| `std_alpha` | ABRA-α under the standard protocol with the α selected per class by the Cityscapes search (after `evals`) |
+| `fda_evals` | every FDA model at its last and best epoch (after `train`) |
+| `collect` | `tools/revision_collect.py`: results.csv, alpha_search.csv, masks.csv, sanity_report.md, metadata.yaml in `$RUNS/out` |
+
+The ABRA-α searches log mAP, AP50 and AP75 for every α (`alpha_curve` in results.json); `collect` selects α on mAP
+(ties: closest to 1.0) and reports AP50/AP75 at that α.
 
 ---
 

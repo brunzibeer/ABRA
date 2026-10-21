@@ -40,6 +40,8 @@ def test_alpha_search_maximises_the_chosen_metric(monkeypatch, metric, best):
                            alpha_metric=metric)
     out = commands._alpha_search(args, model, None, residual, "cpu", SimpleNamespace(log=lambda *a, **k: None), None, None)
     assert out["alpha"] == pytest.approx(best) and out["alpha_metric"] == metric and out["oracle"]
+    assert all(set(r) == {"alpha", "AP", "AP50", "AP75"} for r in out["alpha_curve"])   # every alpha, all metrics
+    assert max(out["alpha_curve"], key=lambda r: r[metric])["alpha"] == pytest.approx(best)
     assert (model.lin.weight - w0).mean().item() == pytest.approx(best, abs=1e-5)  # model left at the best alpha
 
 
