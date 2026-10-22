@@ -170,3 +170,30 @@ def test_recipes_wandb_first_then_launch_script(tmp_path):
     assert '"seed":\n    "value": "not recorded"' in ft4
     grid = next(csv.DictReader(open(tmp_path / "g.csv")))
     assert (grid["run"], grid["mAP_best"], grid["mAP_last"], grid["AP50"]) == (fda["name"], "41.5", "41.0", "not recorded")
+
+
+def test_qual_find_matches_the_panel_image(tmp_path):
+    import numpy as np
+    from PIL import Image
+
+    from tools import qual_find
+    rng = np.random.default_rng(0)
+    imgs = tmp_path / "images"
+    (imgs / "city").mkdir(parents=True)
+    test = {"images": [{"id": i, "file_name": f"city/{i}.png", "width": 64, "height": 32} for i in range(3)],
+            "categories": [{"id": 1, "name": "bus"}],
+            "annotations": [{"id": 9, "image_id": 1, "category_id": 1, "bbox": [4, 4, 8, 8], "area": 64, "iscrowd": 0}]}
+    for i in range(3):
+        Image.fromarray(rng.integers(0, 255, (32, 64, 3), dtype=np.uint8)).save(imgs / f"city/{i}.png")
+    panel = np.asarray(Image.open(imgs / "city/1.png").resize((50, 25), Image.BILINEAR)).copy()
+    panel[2:4, 2:12] = qual_find.BOX   # a drawn box
+    (tmp_path / "panels").mkdir()
+    Image.fromarray(panel).save(tmp_path / "panels/bus_gt.png")
+    (tmp_path / "ann/bus").mkdir(parents=True)
+    (tmp_path / "ann/bus/annotations_val.json").write_text(json.dumps(test))
+    qual_find.main(["--panels", str(tmp_path / "panels"), "--images", str(imgs), "--annotations", str(tmp_path / "ann"),
+                    "--classes", "bus", "--out", str(tmp_path / "q")])
+    one = json.loads((tmp_path / "q/bus/annotations_val.json").read_text())
+    assert [i["id"] for i in one["images"]] == [1] and [a["id"] for a in one["annotations"]] == [9]
+    assert (tmp_path / "q/bus/image.png").exists()
+    assert json.loads((tmp_path / "q/match.json").read_text())["bus"]["file_name"] == "city/1.png"
