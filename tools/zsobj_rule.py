@@ -80,7 +80,11 @@ def main(argv=None):
     p.add_argument("--domains", nargs="+", default=["normal", "fog"])
     p.add_argument("--out", type=Path, required=True)
     args = p.parse_args(argv)
-    report = {d: compare(args.cityscapes / d / args.base, args.cityscapes / d / args.zs) for d in args.domains}
+    report = {}
+    for d in args.domains:   # a lost file is reported, not fatal (Foggy's zero-shot file is not on the server)
+        base, zs = args.cityscapes / d / args.base, args.cityscapes / d / args.zs
+        missing = [str(f) for f in (base, zs) if not f.exists()]
+        report[d] = {"missing": missing} if missing else compare(base, zs)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
