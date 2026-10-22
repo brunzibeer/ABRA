@@ -76,6 +76,15 @@ def test_collect_writes_unrounded_rows_counts_and_alpha_curve(tmp_path):
     assert "abc1234" in (out / "metadata.yaml").read_text()
 
 
+def test_alpha_map_reads_no_checkpoint(tmp_path, capsys):
+    per_class = _coco(tmp_path / "experts/bus/annotations_val.json", ["a"], [(0, "bus")])
+    curve = [{"alpha": 0.9, "AP": 30.0, "AP50": 1.0, "AP75": 1.0}, {"alpha": 1.4, "AP": 31.0, "AP50": 1.0, "AP75": 1.0}]
+    _run(tmp_path, "cityscapes_fog_abra_alpha_exp1_train", per_class, {"AP": 31.0, "AP50": 1.0, "AP75": 1.0,
+         "alpha": 1.4, "alpha_curve": curve}, residual=tmp_path / "missing.pth")   # would fail if hashed
+    revision_collect.main(["alpha-map", str(tmp_path / "eval"), "cityscapes", "fog"])
+    assert capsys.readouterr().out.strip() == "train=1.4"
+
+
 def test_dataset_stats_rows(tmp_path):
     for name, root, avail in (("cityscapes", tmp_path / "cs", "car"), ("sdgod", tmp_path / "sd", "car")):
         for domain in revision_stats.BENCHMARKS[name]["domains"]:

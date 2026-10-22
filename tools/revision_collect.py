@@ -102,7 +102,9 @@ def exp_id(bench, method, protocol):
     return {"abra_init_svft": "E2", "abra_init_fda": "E2", "abra_init_fda_best": "E2"}.get(method, "E1")
 
 
-def collect_results(root):
+def collect_results(root, ids=True):
+    """Rows of results.csv and alpha_search.csv; ``ids=False`` skips checkpoint_id (it hashes every checkpoint, too
+    slow for the login node, where alpha-map runs)."""
     results, alphas = [], []
     for name, res, config in runs(root):
         bench, target, label, cls = parse_run(name)
@@ -124,7 +126,7 @@ def collect_results(root):
         results.append({"exp_id": exp_id(bench, method, protocol), "benchmark": bench, "target_domain": target,
                         "method": method, "class": cls, "protocol": protocol, "alpha": alpha, "n_images": n_images,
                         "n_gt": n_gt, "mAP": metrics["AP"], "AP50": metrics["AP50"], "AP75": metrics["AP75"],
-                        "checkpoint_id": checkpoint_id(args), "_config": config})
+                        "checkpoint_id": checkpoint_id(args) if ids else None, "_config": config})
     return results, alphas
 
 
@@ -265,7 +267,7 @@ def main(argv=None):
             print(f"{n:5d}  commit {commit}  gpu {gpu}  torch {torch_v}  cuda {cuda}")
         return
     if args.command == "alpha-map":
-        results, _ = collect_results(args.root)
+        results, _ = collect_results(args.root, ids=False)
         pick = {r["class"]: r["alpha"] for r in results if r["method"] == "abra_alpha" and r["protocol"] == "per_class"
                 and (r["benchmark"], r["target_domain"]) == (args.benchmark, args.target)}
         print(",".join(f"{c}={a:g}" for c, a in sorted(pick.items())))
