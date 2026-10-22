@@ -3,6 +3,8 @@
     python tools/revision_collect.py provenance <run roots...>          # commit / GPU / torch of existing runs
     python tools/revision_collect.py alpha-map <eval root> <benchmark> <target>   # ALPHA_MAP of the E1/E6 searches
     python tools/revision_collect.py collect --runs <revision RUNS> --rebuttal <rebuttal RUNS> --out <dir>
+    python tools/revision_collect.py round2 --runs <round-2 RUNS> --rebuttal <rebuttal RUNS> --round1 <round-1 out> \
+        --out <dir> --code_commit <hash>                              # round 2 (T1, T2 results; T4 provenance)
 
 ``collect`` writes results.csv, alpha_search.csv, masks.csv, sanity_report.md and metadata.yaml (dataset_stats.csv
 and projection_stats.csv are written by tools/revision_stats.py and tools/projection_stats.py). Every float is
@@ -31,11 +33,25 @@ LABELS = {   # label (without _std) -> spec method id
     # Fig. 4 "Zero shot w/ Obj.": candidate readings (slurm/revision.sh fig4)
     "zero_shot_obj_exp1": "fig4_theta0_object_prompt", "target_obj_exp1": "fig4_thetaT_object_prompt",
     "zero_shot_multi_exp1": "fig4_theta0_multi",
+    # round 2: Fig. 4 "Zero shot w/ Obj." (domain experts dom3 trained on zero-shot boxes + exp3_<cls>), Fig. 5 Merge
+    "abra_zsobj_exp3": "fig4_zs_obj", "abra_merge_exp3": "merge",
 }
 RESULT_COLUMNS = ["exp_id", "benchmark", "target_domain", "method", "class", "protocol", "alpha", "n_images", "n_gt",
                   "mAP", "AP50", "AP75", "checkpoint_id"]
 ALPHA_COLUMNS = ["benchmark", "target_domain", "class", "alpha", "mAP", "AP50", "AP75", "selected"]
 MASK_COLUMNS = ["benchmark", "target_domain", "class", "class_set", "mask_id", "mAP", "AP50", "AP75", "origin"]
+PROVENANCE_COLUMNS = ["gpu", "host", "code_commit", "run_date"]
+OTHER_COLUMNS = ["table", "setting", "run_label", "benchmark", "target_domain", "class", "mAP", "AP50", "AP75"]
+# T4: rebuttal-run families of the other tables (per-class protocol, Cityscapes -> Foggy Cityscapes)
+OTHER = [("Table 3", "theta_T alone", "target_exp1"), ("Table 3", "theta_T + tau learned on theta_0", "task_add_exp9"),
+         ("Strict domain experts", "ABRA, theta_T retrained on all images", "abra_thetaT_ref_exp1"),
+         ("Strict domain experts", "ABRA, theta_T without unavailable classes", "abra_strict_all_exp1"),
+         ("Strict domain experts", "ABRA, theta_T without the evaluated class", "abra_strict_cls_exp1"),
+         ("Strict domain experts", "theta_T alone, all images", "target_thetaT_ref_exp1"),
+         ("Strict domain experts", "theta_T alone, without unavailable classes", "target_strict_all_exp1"),
+         ("Strict domain experts", "theta_T alone, without the evaluated class", "target_strict_cls_exp1"),
+         ("k-ablation", "k = 1", "abra_k1_exptop1"), ("k-ablation", "k = 2", "abra_k2_exptop2"),
+         ("k-ablation", "k = 3", "abra_k3_exp1")]
 AVAILABLE = {"cityscapes": {"car", "person", "bicycle"}, "sdgod": {"car", "person", "truck"}}
 ABRAOUT = "/work/horizon_store/abraout/"
 # E0 (sanity gate): mAP per class, per-class protocol, from the rebuttal (Tables R1, R4) and the Day-Foggy masks run
@@ -93,6 +109,8 @@ def checkpoint_id(args):
 
 
 def exp_id(bench, method, protocol):
+    if method in ("fig4_zs_obj", "merge"):
+        return {"fig4_zs_obj": "T1", "merge": "T2"}[method]
     if bench == "sdgod":
         return {"fda": "E4", "fda_best": "E4", "param_delta": "E5"}.get(method, "E6")
     if protocol == "standard":
@@ -144,8 +162,72 @@ def collect_masks(root):
             continue
         rows.append({"benchmark": bench, "target_domain": target, "class": cls,
                      "class_set": "avail" if cls in AVAILABLE[bench] else "unav", "mask_id": mask, "mAP": res["AP"],
-                     "AP50": res["AP50"], "AP75": res["AP75"], "origin": "log"})
+                     "AP50": res["AP50"], "AP75": res["AP75"], "origin": "log", "_config": config})
     return rows
+
+
+def run_provenance(config, commit=None):
+    """GPU, host, commit and start date of a run (``unknown`` when not recorded); ``commit`` fills a missing commit."""
+    env = config.get("environment") or {}
+    return {"gpu": env.get("gpu") or "unknown", "host": env.get("host") or "unknown",
+            "code_commit": config.get("git_commit") or commit or "unknown",
+            "run_date": (config.get("started") or "unknown")[:10]}
+
+
+def collect_other(root):
+    labels = {label: (table, setting) for table, setting, label in OTHER}
+    rows = []
+    for name, res, config in runs(root):
+        bench, target, label, cls = parse_run(name)
+        if label in labels and not config["args"].get("eval_classes"):
+            table, setting = labels[label]
+            rows.append({"table": table, "setting": setting, "run_label": label, "benchmark": bench,
+                         "target_domain": target, "class": cls, "mAP": res["AP"], "AP50": res["AP50"],
+                         "AP75": res["AP75"], **run_provenance(config)})
+    order = {label: i for i, (_, _, label) in enumerate(OTHER)}
+    return sorted(rows, key=lambda r: (order[r["run_label"]], r["class"]))
+
+
+def provenance_summary(groups):
+    """Markdown: per table and setting, whether every row ran on one GPU model, and which rows did not."""
+    lines = ["| Table | Setting | Rows | GPU models | One model? | Rows on another model |", "|---|---|---|---|---|---|"]
+    for (table, setting), rows in groups.items():
+        gpus = Counter(r["gpu"] for r in rows)
+        main = gpus.most_common(1)[0][0]
+        others = ", ".join(f"{r['class']} ({r['gpu']})" for r in rows if r["gpu"] != main)
+        lines.append(f"| {table} | {setting} | {len(rows)} | "
+                     + "; ".join(f"{g}: {n}" for g, n in gpus.most_common())
+                     + f" | {'yes' if len(gpus) == 1 else 'no'} | {others or '-'} |")
+    return "\n".join(lines) + "\n"
+
+
+def round2(args):
+    """T1/T2 results with GPU and commit, T4 provenance of the rebuttal-run tables."""
+    args.out.mkdir(parents=True, exist_ok=True)
+    results, _ = collect_results(args.runs / "eval")
+    for r in results:
+        r.update({k: v for k, v in run_provenance(r["_config"], args.code_commit).items() if k in ("gpu", "code_commit")})
+    write_csv(args.out / "results_round2.csv", RESULT_COLUMNS + ["gpu", "code_commit"], results)
+
+    masks = collect_masks(args.rebuttal / "eval")
+    for r in masks:
+        r.update(run_provenance(r["_config"]))
+    round1 = {(r["benchmark"], r["target_domain"], r["class"], r["mask_id"]): r["mAP"]
+              for r in csv.DictReader(open(args.round1 / "masks.csv"))}
+    mine = {(r["benchmark"], r["target_domain"], r["class"], r["mask_id"]): repr(r["mAP"]) for r in masks}
+    if mine.keys() != round1.keys() or any(float(mine[k]) != float(round1[k]) for k in mine):
+        raise SystemExit("masks: rows differ from the round-1 masks.csv")
+    write_csv(args.out / "masks_round2.csv", MASK_COLUMNS + PROVENANCE_COLUMNS, masks)
+
+    other = collect_other(args.rebuttal / "eval")
+    write_csv(args.out / "provenance_other.csv", OTHER_COLUMNS + PROVENANCE_COLUMNS, other)
+    groups = {}
+    for r in masks:
+        groups.setdefault((f"Masks ({r['benchmark']} {r['target_domain']})", r["mask_id"]), []).append(r)
+    for r in other:
+        groups.setdefault((r["table"], r["setting"]), []).append(r)
+    (args.out / "provenance_summary.md").write_text(provenance_summary(groups))
+    print(provenance_summary(groups))
 
 
 def write_csv(path, columns, rows):
@@ -260,7 +342,15 @@ def main(argv=None):
     s.add_argument("--runs", type=Path, required=True, help="RUNS of the revision (eval/ below it)")
     s.add_argument("--rebuttal", type=Path, required=True, help="RUNS of the rebuttal (mask runs, E7)")
     s.add_argument("--out", type=Path, required=True)
+    s = sub.add_parser("round2")
+    s.add_argument("--runs", type=Path, required=True, help="RUNS of round 2 (eval/ below it)")
+    s.add_argument("--rebuttal", type=Path, required=True, help="RUNS of the rebuttal (masks and other tables, T4)")
+    s.add_argument("--round1", type=Path, required=True, help="round-1 out/ (its masks.csv: same rows expected)")
+    s.add_argument("--out", type=Path, required=True)
+    s.add_argument("--code_commit", default=None, help="checkout of the round-2 runs, when git did not run on the node")
     args = p.parse_args(argv)
+    if args.command == "round2":
+        return round2(args)
 
     if args.command == "provenance":
         for (commit, gpu, torch_v, cuda), n in provenance(args.roots).most_common():
