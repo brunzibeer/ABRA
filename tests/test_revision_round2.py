@@ -81,17 +81,23 @@ def _jsonl(path, records):
 
 def test_zsobj_rule_reports_added_boxes(tmp_path):
     gt = {"bbox": [0, 0, 10, 10], "label": 1, "category": "car"}
-    zs = {"bbox": [20, 20, 30, 30], "label": 2, "category": "bus", "score": 0.4}
-    near = {"bbox": [0, 0, 10, 9], "label": 2, "category": "bus", "score": 0.9}
+    renamed = {"bbox": [0, 0, 10, 10], "label": 3, "category": "truck"}   # the same box under another name
+    zs = {"bbox": [20, 20, 30, 30], "label": 2, "category": "bus"}
+    near = {"bbox": [0, 0, 10, 9], "label": 2, "category": "bus"}
     for d in ("normal", "fog"):
         _jsonl(tmp_path / d / "base.jsonl", [("a.png", [gt]), ("b.png", [gt])])
-        _jsonl(tmp_path / d / "zs.jsonl", [("a.png", [gt, zs]), ("b.png", [gt, near]), ("c.png", [zs])])
-    zsobj_rule.main(["--cityscapes", str(tmp_path), "--zs", "zs.jsonl", "--base", "base.jsonl", "--out", str(tmp_path / "r.json")])
+        _jsonl(tmp_path / d / "zs.jsonl", [("a.png", [renamed, zs]), ("b.png", [near]), ("c.png", [zs])])
+    zsobj_rule.main(["--cityscapes", str(tmp_path), "--zs", "zs.jsonl", "--base", "base.jsonl", "--domains", "fog", "normal",
+                     "--out", str(tmp_path / "r.json")])
     rep = json.loads((tmp_path / "r.json").read_text())["fog"]
-    assert (rep["images_only_in_zs"], rep["base_boxes_kept"], rep["base_boxes_dropped"], rep["added_boxes"]) == (1, 2, 0, 3)
-    assert rep["added_categories"] == {"bus": 3} and rep["added_extra_fields"] == {"score": 3}
-    assert rep["added_score_min_median_max"] == [0.4, 0.4, 0.9]
+    assert (rep["images_only_in_zs"], rep["base_boxes_kept (same coordinates)"], rep["base_boxes_dropped"],
+            rep["added_boxes"]) == (1, 1, 1, 3)
+    assert rep["base_category -> zs_category of kept boxes"] == {"car -> truck": 1}
+    assert rep["added_categories"] == {"bus": 3}
     assert rep["added_max_iou_with_base_by_band"] == {"0.0": 2, "0.9": 1}
+    zsobj_rule.main(["--cityscapes", str(tmp_path), "--zs", "missing.jsonl", "--base", "base.jsonl", "--domains", "fog",
+                     "--out", str(tmp_path / "m.json")])
+    assert "missing" in json.loads((tmp_path / "m.json").read_text())["fog"]
 
 
 def test_dataset_totals_rows_and_paper_check(tmp_path):

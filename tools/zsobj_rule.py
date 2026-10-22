@@ -31,43 +31,44 @@ def iou(a, b):
     return inter / union if union > 0 else 0.0
 
 
-def key(inst):
-    return tuple(round(float(x), 2) for x in inst["bbox"]), inst.get("category")
+def box(inst):
+    return tuple(round(float(x), 2) for x in inst["bbox"])
 
 
 def compare(base_path, zs_path):
+    """Boxes matched by coordinates (the zero-shot file renames categories, so names are compared separately)."""
     base, zs = records(base_path), records(zs_path)
     out = {"base_file": str(base_path), "zs_file": str(zs_path), "base_images": len(base), "zs_images": len(zs),
            "images_only_in_base": len(base.keys() - zs.keys()), "images_only_in_zs": len(zs.keys() - base.keys())}
     kept = dropped = 0
-    added, cats, fields, per_image, best_iou = [], Counter(), Counter(), Counter(), []
+    renamed, added_cats, labels, fields, per_image, best_iou, added = Counter(), Counter(), Counter(), Counter(), Counter(), [], []
     for name, rec in zs.items():
         old = base.get(name, {"detection": {"instances": []}})["detection"]["instances"]
-        old_keys = Counter(key(i) for i in old)
         new = rec["detection"]["instances"]
-        new_keys = Counter(key(i) for i in new)
-        kept += sum((old_keys & new_keys).values())
-        dropped += sum((old_keys - new_keys).values())
-        extra = new_keys - old_keys
+        pool = {}
+        for o in old:
+            pool.setdefault(box(o), []).append(o["category"])
         n = 0
         for inst in new:
-            k = key(inst)
-            if extra[k] > 0:
-                extra[k] -= 1
+            labels[(inst.get("label"), inst.get("category"))] += 1
+            fields.update(f for f in inst if f not in ("bbox", "category", "label"))
+            if pool.get(box(inst)):
+                renamed[(pool[box(inst)].pop(), inst.get("category"))] += 1
+                kept += 1
+            else:
                 n += 1
-                cats[inst.get("category")] += 1
-                fields.update(f for f in inst if f not in ("bbox", "category", "label"))
+                added_cats[inst.get("category")] += 1
                 best_iou.append(max((iou(inst["bbox"], o["bbox"]) for o in old), default=0.0))
                 added.append(inst)
+        dropped += sum(len(v) for v in pool.values())
         per_image[n] += 1
-    scores = sorted(float(i["score"]) for i in added if "score" in i)
     bands = Counter(min(int(v * 10), 9) / 10 for v in best_iou)   # [0.0, 0.1), ..., [0.9, 1.0]
-    out.update({"base_boxes_kept": kept, "base_boxes_dropped": dropped, "added_boxes": len(added),
-                "added_categories": dict(cats.most_common()), "added_extra_fields": dict(fields),
-                "added_score_min_median_max": [scores[0], scores[len(scores) // 2], scores[-1]] if scores else None,
-                "added_per_image": {str(k): v for k, v in sorted(per_image.items())},
+    out.update({"base_boxes_kept (same coordinates)": kept, "base_boxes_dropped": dropped,
+                "base_category -> zs_category of kept boxes": {f"{a} -> {b}": v for (a, b), v in renamed.most_common()},
+                "added_boxes": len(added), "added_categories": dict(added_cats.most_common()),
+                "zs_label_id -> category": {f"{a} -> {b}": v for (a, b), v in sorted(labels.items(), key=str)},
+                "extra_fields": dict(fields), "added_per_image_median": sorted(per_image.elements())[len(zs) // 2] if zs else None,
                 "added_max_iou_with_base_by_band": {f"{b:.1f}": bands[b] for b in sorted(bands)},
-                "zs_record_keys": sorted(next(iter(zs.values()))) if zs else [],
                 "example_added": added[:3]})
     return out
 
