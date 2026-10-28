@@ -168,6 +168,7 @@ outputs*/
 .DS_Store
 *.sh
 !scripts/*.sh
+!tools/download_thermal.sh
 # local SLURM scripts (cluster-specific, not published); their guide slurm/README.md is tracked
 /slurm/*
 !/slurm/README.md
