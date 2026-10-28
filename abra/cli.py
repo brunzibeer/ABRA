@@ -12,6 +12,7 @@ Commands
     prepare-data   build the Cityscapes -> Foggy Cityscapes annotation splits (CPU, seconds)
     data-stats     class-partition statistics of a benchmark (images / instances per class and split)
     convert-bdd    BDD-format label files -> COCO json (SDGOD splits)
+    convert-coco   COCO json of one split -> master file of one domain (prepare-data --benchmark masters; FLIR)
 
 Run ``python -m abra <command> -h`` for the options of a command.
 """
@@ -212,6 +213,8 @@ def build_parser():
     add_stats_args(sub.add_parser("data-stats", help="class-partition statistics of a benchmark"))
     from abra.data.bdd import add_bdd_args
     add_bdd_args(sub.add_parser("convert-bdd", help="BDD-format label files -> COCO json (SDGOD)"))
+    from abra.data.coco_domain import add_coco_args
+    add_coco_args(sub.add_parser("convert-coco", help="COCO json of one split -> master file of one domain (FLIR)"))
     return parser
 
 
@@ -232,6 +235,9 @@ def main(argv=None):
     if args.command == "convert-bdd":
         from abra.data.bdd import convert_bdd
         return convert_bdd(args)
+    if args.command == "convert-coco":
+        from abra.data.coco_domain import convert_coco
+        return convert_coco(args)
     from abra import commands
     handler = {"train-domain": commands.train_domain, "train-expert": commands.train_expert, "eval": commands.evaluate,
                "transport": commands.transport_offline, "migrate": commands.migrate, "fda": commands.fda}[args.command]

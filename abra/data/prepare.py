@@ -21,6 +21,11 @@ categories (multi-class prompt). SDGOD (``--benchmark sdgod``): the masters are 
 release, kept as is); the domain, per-class and ``multi/`` files are rebuilt from them, with the top-k classes of
 ``--source_domain`` for every domain.
 
+Any other benchmark (``--benchmark masters``, e.g. RGB -> thermal): the SDGOD layout under ``--masters_root``, written
+by ``convert-coco``, plus an optional ``annotations_val.json`` per domain (per-class and ``multi/`` val files are then
+written too, for model and alpha selection off the test split). Every domain must carry the same categories (same ids,
+same names): checked before anything is written.
+
 Options for the rebuttal experiments: ``--exclude_unavailable`` (domain files of the target without images that
 contain unavailable classes) and ``--few_shot`` (target class files with N images or N instances).
 """
@@ -279,7 +284,7 @@ def top_classes(records, k):
 # ---------------------------------------------------------------------------------------------- command
 
 def add_prepare_args(p):
-    p.add_argument("--benchmark", default="cityscapes", choices=["cityscapes", "sdgod"])
+    p.add_argument("--benchmark", default="cityscapes", choices=["cityscapes", "sdgod", "masters"])
     g = p.add_argument_group("input: Cityscapes (gtFine or the master files of the release)")
     g.add_argument("--cityscapes_root", type=Path, default=None,
                    help="Cityscapes root with gtFine/{train,val} (and leftImg8bit/, used to skip missing images)")
@@ -290,7 +295,11 @@ def add_prepare_args(p):
     g = p.add_argument_group("input: SDGOD")
     g.add_argument("--sdgod_root", type=Path, default=None,
                    help="folder with <domain>/annotations/annotations_{train.jsonl,test.json} for every domain")
-    g.add_argument("--source_domain", default="daytime_sunny", help="SDGOD source domain (Day-Clear)")
+    g.add_argument("--source_domain", default="daytime_sunny", help="SDGOD source domain (Day-Clear); with masters, e.g. rgb")
+    g = p.add_argument_group("input: master files of any benchmark (--benchmark masters, written by convert-coco)")
+    g.add_argument("--masters_root", type=Path, default=None,
+                   help="folder with <domain>/annotations/annotations_{train.jsonl,test.json} for every domain, "
+                        "and optionally annotations_val.json")
     g = p.add_argument_group("output")
     g.add_argument("--out_dir", type=Path, required=True, help="e.g. datasets/cityscapes or datasets/sdgod")
     g.add_argument("--objectify_classes", nargs="+", default=None,
@@ -329,18 +338,39 @@ def same_file(mine, reference):
     return a == b
 
 
+def check_categories(domains, vals, source):
+    """masters: every eval COCO file has the same categories (ids and names), and every train label maps to the
+    same name as in them; otherwise a class id would mean different classes in source and target."""
+    ref = [(c["id"], c["name"]) for c in domains[source][1]["categories"]]
+    names = dict(ref)
+    evals = [(f"{d} test", coco) for d, (_, coco) in domains.items()] + [(f"{d} val", coco) for d, coco in vals.items()]
+    for where, coco in evals:
+        if [(c["id"], c["name"]) for c in coco["categories"]] != ref:
+            raise SystemExit(f"categories of {where} differ from {source} test: "
+                             f"{[(c['id'], c['name']) for c in coco['categories']]} vs {ref}")
+    for d, (train, _) in domains.items():
+        for label, name in odvg_categories(train).items():
+            if names.get(label) != name:
+                raise SystemExit(f"{d} train: label {label} is {name!r}, but {names.get(label)!r} in the eval files")
+
+
 def _inputs(args, date):
-    """-> {domain: (train ODVG records, eval COCO dict)}, source domain, eval split name."""
-    if args.benchmark == "sdgod":
-        if not args.sdgod_root:
-            raise SystemExit("pass --sdgod_root")
-        domains = {}
-        for d in sorted(p.name for p in Path(args.sdgod_root).iterdir() if (p / "annotations").is_dir()):
-            ann = Path(args.sdgod_root) / d / "annotations"
+    """-> {domain: (train ODVG records, eval COCO dict)}, source domain, eval split name, {domain: val COCO dict}."""
+    if args.benchmark in ("sdgod", "masters"):
+        root = args.sdgod_root if args.benchmark == "sdgod" else args.masters_root
+        if not root:
+            raise SystemExit(f"pass --{args.benchmark}_root")
+        domains, vals = {}, {}
+        for d in sorted(p.name for p in Path(root).iterdir() if (p / "annotations").is_dir()):
+            ann = Path(root) / d / "annotations"
             domains[d] = (read_jsonl(ann / "annotations_train.jsonl"), json.loads((ann / "annotations_test.json").read_text()))
+            if args.benchmark == "masters" and (ann / "annotations_val.json").exists():
+                vals[d] = json.loads((ann / "annotations_val.json").read_text())
         if args.source_domain not in domains:
             raise SystemExit(f"source domain {args.source_domain} not in {sorted(domains)}")
-        return domains, args.source_domain, "test"
+        if args.benchmark == "masters":
+            check_categories(domains, vals, args.source_domain)
+        return domains, args.source_domain, "test", vals
     if args.train_master:
         train = read_jsonl(args.train_master)
     elif args.cityscapes_root:
@@ -354,13 +384,14 @@ def _inputs(args, date):
     else:
         raise SystemExit("pass --cityscapes_root or --val_master")
     # Foggy Cityscapes renders the same scenes: the fog files are the normal ones with the foggy image names
-    return {"normal": (train, val), "fog": (foggy_odvg(train, args.fog_beta), foggy_coco(val, args.fog_beta))}, "normal", "val"
+    return ({"normal": (train, val), "fog": (foggy_odvg(train, args.fog_beta), foggy_coco(val, args.fog_beta))},
+            "normal", "val", {})
 
 
 def prepare(args):
     date = args.date_created or now()
-    domains, source, split = _inputs(args, date)
-    sdgod = args.benchmark == "sdgod"
+    domains, source, split, vals = _inputs(args, date)
+    per_domain = args.benchmark in ("sdgod", "masters")   # SDGOD layout: top-k maps in label_maps/domains/
     train = domains[source][0]
     labels = odvg_categories(train)
     all_classes = [labels[k] for k in sorted(labels)]
@@ -384,9 +415,9 @@ def prepare(args):
     emit(maps / "standard_map.json", write_json, {str(k): labels[k] for k in sorted(labels)}, indent=4)
     for k in [len(objectified)] + variants:
         classes = objectified[:k]
-        emit((maps / "domains" if sdgod else maps) / f"top_{k}.json", write_json,
+        emit((maps / "domains" if per_domain else maps) / f"top_{k}.json", write_json,
              {str(i): labels[j] for i, j in enumerate(sorted(j for j in labels if labels[j] in classes), start=1)}, indent=4)
-    if not sdgod:
+    if args.benchmark != "sdgod":
         emit(maps / "uda_map.json", write_json,
              {str(i): labels[k] for i, k in enumerate(sorted(k for k in labels if labels[k] in unavailable), start=1)}, indent=4)
     for name in experts:
@@ -397,6 +428,9 @@ def prepare(args):
         ann = out / domain / "annotations"
         emit(ann / "annotations_train.jsonl", write_jsonl, d_train)
         emit(ann / f"annotations_{split}.json", write_json, d_eval)
+        d_val = vals.get(domain)
+        if d_val is not None:
+            emit(ann / "annotations_val.json", write_json, d_val)
         domain_records = odvg_select(d_train, objectified)
         emit(ann / "domains" / "annotations_train_domain.jsonl", write_jsonl, domain_records)
         for k in variants:
@@ -413,6 +447,9 @@ def prepare(args):
             emit(ann / "experts" / name / "annotations_train.jsonl", write_jsonl, class_records)
             emit(ann / "experts" / name / f"annotations_{split}.json", write_json, coco_class(d_eval, name, date))
             emit(ann / "multi" / name / f"annotations_{split}.json", write_json, coco_multi(d_eval, name, date))
+            if d_val is not None:
+                emit(ann / "experts" / name / "annotations_val.json", write_json, coco_class(d_val, name, date))
+                emit(ann / "multi" / name / "annotations_val.json", write_json, coco_multi(d_val, name, date))
             if target and name in (args.few_shot_classes or unavailable):
                 for n in args.few_shot:
                     emit(ann / "experts" / name / f"annotations_train_{n}.jsonl", write_jsonl,
@@ -420,7 +457,8 @@ def prepare(args):
 
     manifest = {"benchmark": args.benchmark, "source": source, "objectified": objectified, "unavailable": unavailable,
                 "top_k_variants": variants,
-                "fog_beta": None if sdgod else args.fog_beta, "exclude_unavailable": args.exclude_unavailable,
+                "fog_beta": None if per_domain else args.fog_beta, "exclude_unavailable": args.exclude_unavailable,
+                **({"val_domains": sorted(vals)} if args.benchmark == "masters" else {}),
                 "few_shot": args.few_shot, "few_shot_unit": args.few_shot_unit, "seed": args.seed,
                 "files": {str(p.relative_to(out)): {"sha256": _sha256(p), "bytes": p.stat().st_size} for p in written}}
     write_json(manifest, out / "manifest.json")

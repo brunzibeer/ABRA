@@ -133,6 +133,19 @@ datasets/sdgod/
 `train/` or `val/` is appended to `--root` automatically when the path contains `cityscapes`, `AODRaw` or `bdd`;
 otherwise pass `--add_split 1`.
 
+### Other benchmarks (e.g. RGB → thermal)
+
+Any benchmark with one COCO json per domain and split (e.g. FLIR ADAS v2) goes through `convert-coco`. It writes the
+SDGOD master layout, with the same category ids in every domain. `prepare-data --benchmark masters` then builds the
+rest, plus per-class `val` files when `annotations_val.json` exists:
+
+```bash
+python -m abra convert-coco --coco <flir>/images_thermal_train/coco.json --split train --out_dir masters/thermal \
+  --classes person bicycle car --rename bike=bicycle --file_prefix images_thermal_train/
+# ... the same for val / test and for the rgb domain, with the same --classes
+python -m abra prepare-data --benchmark masters --masters_root masters --source_domain rgb --out_dir datasets/flir
+```
+
 ### Optional files
 
 | Option of `prepare-data` | Files (target domains only) | Use |
