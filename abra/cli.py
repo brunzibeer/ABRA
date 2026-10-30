@@ -137,11 +137,13 @@ def add_transport_args(p, residual_required):
                    help="ABRA: scale each layer by ||sigma_T|| / ||sigma_S||")
 
 
-DATA_COMMANDS = ("prepare-data", "data-stats", "convert-bdd", "convert-coco", "convert-m3fd")
+LIGHT_COMMANDS = ("report", "prepare-data", "data-stats", "convert-bdd", "convert-coco", "convert-m3fd")
 
 
-def add_data_commands(sub):
-    """The annotation commands: standard library only."""
+def add_light_commands(sub):
+    """The commands that need only the standard library (annotations, result tables)."""
+    from abra.eval.report import add_report_args
+    add_report_args(sub.add_parser("report", help="collect results.json files into one table"))
     from abra.data.prepare import add_prepare_args
     add_prepare_args(sub.add_parser("prepare-data", help="build the Cityscapes -> Foggy Cityscapes annotation splits"))
     from abra.data.stats import add_stats_args
@@ -154,13 +156,13 @@ def add_data_commands(sub):
     add_m3fd_args(sub.add_parser("convert-m3fd", help="M3FD xml + split file -> rgb and thermal master files"))
 
 
-def build_parser(data_only=False):
-    """``data_only``: only the annotation commands, without importing torch and the model (the fda parser does), which
-    can take very long on a CPU node."""
+def build_parser(light=False):
+    """``light``: only LIGHT_COMMANDS, without importing torch and the model (the fda parser does), which can take very
+    long on a CPU node."""
     parser = argparse.ArgumentParser(prog="abra", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
-    if data_only:
-        add_data_commands(sub)
+    if light:
+        add_light_commands(sub)
         return parser
 
     p = sub.add_parser("train-domain", help="train a domain expert (Objectification)")
@@ -229,15 +231,13 @@ def build_parser(data_only=False):
 
     from abra.diagnostics.command import add_diagnose_args
     add_diagnose_args(sub.add_parser("diagnose", help="weight-space diagnostics D1-D3 (no data)"))
-    from abra.eval.report import add_report_args
-    add_report_args(sub.add_parser("report", help="collect results.json files into one table"))
-    add_data_commands(sub)
+    add_light_commands(sub)
     return parser
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else list(argv)
-    args = build_parser(data_only=bool(argv) and argv[0] in DATA_COMMANDS).parse_args(argv)
+    args = build_parser(light=bool(argv) and argv[0] in LIGHT_COMMANDS).parse_args(argv)
     if args.command == "diagnose":
         from abra.diagnostics.command import diagnose
         return diagnose(args)

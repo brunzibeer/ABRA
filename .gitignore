@@ -170,6 +170,7 @@ outputs*/
 !scripts/*.sh
 !tools/download_thermal.sh
 !tools/m3fd_convert.sh
+!tools/m3fd_zero_shot.sh
 # local SLURM scripts (cluster-specific, not published); their guide slurm/README.md is tracked
 /slurm/*
 !/slurm/README.md
