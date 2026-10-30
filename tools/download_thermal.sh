@@ -3,9 +3,10 @@
 #
 #   bash tools/download_thermal.sh flir <url>            the link given by the FLIR ADAS v2 form (the download is gated)
 #   bash tools/download_thermal.sh flir <file.zip>       an archive already on disk
-#   bash tools/download_thermal.sh m3fd                  the Google Drive folder of the TarDAL README (needs gdown or uvx)
-#   bash tools/download_thermal.sh m3fd <drive url>      one Drive file or folder (if the README folder holds more than M3FD)
-#   bash tools/download_thermal.sh m3fd <archive|dir>    an archive or folder already on disk (e.g. from Baidu Yun)
+#   bash tools/download_thermal.sh m3fd <drive file url>  M3FD_Detection.zip from the Drive folder of the TarDAL README
+#                                                         (Share > Copy link; needs gdown or uvx)
+#   bash tools/download_thermal.sh m3fd <drive folder url> every file of a Drive folder
+#   bash tools/download_thermal.sh m3fd <archive|dir>     an archive or folder already on disk (e.g. from Baidu Yun)
 #
 # Everything goes to $DATA/<dataset>/ (DATA defaults to <repo>/datasets): archives in download/, contents in raw/.
 # Nothing existing is overwritten: downloads resume, unpacking skips existing files. Archives are kept; the script
@@ -20,7 +21,9 @@ PY=${PY:-}
 for c in python3 python; do   # the first one that runs (python3 can be a stub that only prints a message)
     [[ -z $PY ]] && command -v $c >/dev/null 2>&1 && $c -c "" >/dev/null 2>&1 && PY=$c
 done
-M3FD_DRIVE=https://drive.google.com/drive/folders/1H-oO7bgRuVFYDcMGvxstT1nmy0WF_Y_6   # TarDAL README, "M3FD Dataset"
+# TarDAL README, "M3FD Dataset". On 30 Oct 2026 it held M3FD_Detection.zip (5.7 GB, the one needed: images + labels),
+# M3FD_Fusion.zip (410 MB), roadscene.zip and tno.zip
+M3FD_DRIVE=https://drive.google.com/drive/folders/1H-oO7bgRuVFYDcMGvxstT1nmy0WF_Y_6
 
 die() { echo "error: $*" >&2; exit 1; }
 [[ -n $PY ]] || die "python not found (set PY=...)"
@@ -161,13 +164,25 @@ flir() {
 m3fd() {
     local src=${1:-} root=$DATA/m3fd
     local -a found
-    if [[ -z $src || $src == http* ]]; then
-        local url=${src:-$M3FD_DRIVE} gd
+    [[ -n $src ]] || die "m3fd needs the link of M3FD_Detection.zip: open $M3FD_DRIVE in a browser, right-click
+       M3FD_Detection.zip > Share > Copy link, and pass it (the folder also holds files that are not needed)"
+    if [[ $src == http* ]]; then
+        local gd help id=$src
+        local -a opts=()
         gd=$(gdown_cmd)
+        help=$($gd --help 2>&1 || true)   # gdown options change between versions: use only those this one has
+        [[ $help == *--continue* ]] && opts+=(--continue)
         mkdir -p "$root/download"
-        echo "+ $gd -> $root/download ($url)"
-        if [[ $url == */folders/* ]]; then $gd --folder "$url" -O "$root/download" --remaining-ok
-        else (cd "$root/download" && $gd --fuzzy "$url"); fi
+        echo "+ $gd -> $root/download ($src)"
+        if [[ $src == */folders/* ]]; then
+            [[ $help == *--remaining-ok* ]] && opts+=(--remaining-ok)
+            $gd --folder "$src" -O "$root/download" ${opts[@]+"${opts[@]}"}
+        else
+            # a bare file id works with every gdown version (no --fuzzy needed)
+            [[ $src =~ /d/([A-Za-z0-9_-]+) ]] && id=${BASH_REMATCH[1]}
+            [[ $src =~ [?\&]id=([A-Za-z0-9_-]+) ]] && id=${BASH_REMATCH[1]}
+            (cd "$root/download" && $gd ${opts[@]+"${opts[@]}"} "$id")
+        fi
         src=$root/download
     fi
     if [[ -d $src ]]; then
@@ -183,7 +198,7 @@ m3fd() {
         found=("$src")
         unpack "$src" "$root/raw"
     fi
-    record "$root" "${1:-$M3FD_DRIVE}" "${found[@]}"
+    record "$root" "$1" "${found[@]}"
     list_m3fd "$root/raw" | tee "$root/listing.txt"
     echo "once the conversion is checked: rm ${found[*]}"
 }
@@ -192,5 +207,5 @@ case ${1:-} in
     flir|m3fd)
         echo "data folder: $DATA ($(df -h "$DATA" 2>/dev/null | awk 'NR==2 {print $4 " free on " $6}'))"
         "$@" ;;
-    *) sed -n '2,15p' "${BASH_SOURCE[0]}"; exit 2 ;;
+    *) awk 'NR > 1 && /^#/ {print; next} NR > 1 {exit}' "${BASH_SOURCE[0]}"; exit 2 ;;
 esac
