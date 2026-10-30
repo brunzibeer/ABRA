@@ -13,6 +13,7 @@ Commands
     data-stats     class-partition statistics of a benchmark (images / instances per class and split)
     convert-bdd    BDD-format label files -> COCO json (SDGOD splits)
     convert-coco   COCO json of one split -> master file of one domain (prepare-data --benchmark masters; FLIR)
+    convert-m3fd   M3FD VOC xml + a split file -> master files of the rgb and thermal domains
 
 Run ``python -m abra <command> -h`` for the options of a command.
 """
@@ -215,6 +216,8 @@ def build_parser():
     add_bdd_args(sub.add_parser("convert-bdd", help="BDD-format label files -> COCO json (SDGOD)"))
     from abra.data.coco_domain import add_coco_args
     add_coco_args(sub.add_parser("convert-coco", help="COCO json of one split -> master file of one domain (FLIR)"))
+    from abra.data.m3fd import add_m3fd_args
+    add_m3fd_args(sub.add_parser("convert-m3fd", help="M3FD xml + split file -> rgb and thermal master files"))
     return parser
 
 
@@ -238,6 +241,9 @@ def main(argv=None):
     if args.command == "convert-coco":
         from abra.data.coco_domain import convert_coco
         return convert_coco(args)
+    if args.command == "convert-m3fd":
+        from abra.data.m3fd import convert_m3fd
+        return convert_m3fd(args)
     from abra import commands
     handler = {"train-domain": commands.train_domain, "train-expert": commands.train_expert, "eval": commands.evaluate,
                "transport": commands.transport_offline, "migrate": commands.migrate, "fda": commands.fda}[args.command]

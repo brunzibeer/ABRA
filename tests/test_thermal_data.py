@@ -106,6 +106,81 @@ def test_prepare_masters_with_val(masters, tmp_path):
     assert not (out / "rgb/annotations/domains/annotations_train_domain_no_unavailable.jsonl").exists()
 
 
+# ------------------------------------------------------------------------------------------------ M3FD
+
+M3FD = {  # image number -> (size, boxes as VOC corners)
+    "00000": ((100, 80), [("People", 5, 5, 9, 17), ("Car", 0, 0, 10, 10), ("Lamp", 50, 5, 53, 13)]),
+    "00001": ((100, 80), [("Car", 20, 20, 30, 30), ("Bus", 40, 30, 70, 50), ("Truck", 60, 10, 95, 40)]),
+    "00002": ((100, 80), [("People", 1, 1, 5, 11), ("Motorcycle", 30, 30, 40, 42), ("Car", 90, 70, 110, 90)]),
+    "00003": ((100, 80), [("Car", 1, 1, 9, 9), ("Lamp", 70, 2, 72, 9), ("Lamp", 3, 3, 3.5, 9)]),  # 0.5 px wide
+    "00004": ((60, 40), [("Bus", 1, 1, 30, 20), ("People", 40, 5, 44, 15), ("Truck", 2, 20, 20, 39)]),
+    "00005": ((100, 80), [("Motorcycle", 10, 10, 20, 25), ("Car", 50, 50, 60, 60), ("People", 70, 30, 74, 42)]),
+}
+M3FD_SPLIT = {"rgb_train": ["00000", "00001"], "ir_train": ["00002", "00003"], "val": ["00004"], "test": ["00005"]}
+
+
+def m3fd_raw(root):
+    (root / "Annotation").mkdir(parents=True)
+    for image, ((w, h), boxes) in M3FD.items():
+        objects = "".join(f"<object><name>{n}</name><pose>Unspecified</pose><truncated>0</truncated>"
+                          f"<difficult>0</difficult><bndbox><xmin>{x1}</xmin><ymin>{y1}</ymin><xmax>{x2}</xmax>"
+                          f"<ymax>{y2}</ymax></bndbox></object>" for n, x1, y1, x2, y2 in boxes)
+        (root / "Annotation" / f"{image}.xml").write_text(
+            f"<annotation><folder>F</folder><filename>{image}.png</filename><size><width>{w}</width>"
+            f"<height>{h}</height><depth>3</depth></size>{objects}</annotation>")
+    return root
+
+
+@pytest.fixture(scope="module")
+def m3fd(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("m3fd")
+    split = tmp / "split.json"
+    split.write_text(json.dumps({"splits": M3FD_SPLIT}))
+    reports = main(["convert-m3fd", "--raw", str(m3fd_raw(tmp / "raw")), "--split_file", str(split),
+                    "--out_dir", str(tmp / "masters"), "--lamp", "street lamp", "--date_created", "2026-01-01 00:00:00"])
+    return tmp, reports
+
+
+def test_m3fd_domains_and_splits(m3fd):
+    tmp, reports = m3fd
+    root = tmp / "masters"
+    names = ["person", "car", "bus", "motorcycle", "street lamp", "truck"]
+    for domain, folder, train in (("rgb", "Vis", ["00000", "00001"]), ("thermal", "Ir", ["00002", "00003"])):
+        records = jsonl(root / domain / "annotations/annotations_train.jsonl")
+        assert [r["filename"] for r in records] == [f"{folder}/{i}.png" for i in train]
+        for part, image in (("val", "00004"), ("test", "00005")):
+            coco = json.loads((root / domain / f"annotations/annotations_{part}.json").read_text())
+            assert [c["name"] for c in coco["categories"]] == names
+            assert [(i["id"], i["file_name"]) for i in coco["images"]] == [(int(image) + 1, f"{folder}/{image}.png")]
+    val = json.loads((root / "thermal/annotations/annotations_val.json").read_text())
+    assert [(a["category_id"], a["bbox"]) for a in val["annotations"]] == [(3, [1, 1, 29, 19]), (1, [40, 5, 4, 10]),
+                                                                           (6, [2, 20, 18, 19])]
+    assert reports["thermal train"]["dropped_thin"] == 1 and reports["thermal train"]["boxes"]["street lamp"] == 1
+    car = [a for a in jsonl(root / "thermal/annotations/annotations_train.jsonl")[0]["detection"]["instances"]
+           if a["category"] == "car"]
+    assert car[0]["bbox"] == [90, 70, 100, 80]  # clipped to the 100x80 image
+    assert json.loads((root / "conversion.json").read_text())["lamp"] == "street lamp"
+
+
+def test_m3fd_split_errors(tmp_path):
+    raw = m3fd_raw(tmp_path / "raw")
+    for bad, message in (({**M3FD_SPLIT, "test": ["00005", "00000"]}, "more than one split"),
+                         ({**M3FD_SPLIT, "test": ["00009"]}, "without an xml"),
+                         ({k: v for k, v in M3FD_SPLIT.items() if k != "val"}, "no \\['val'\\]")):
+        split = tmp_path / "split.json"
+        split.write_text(json.dumps({"splits": bad}))
+        with pytest.raises(SystemExit, match=message):
+            main(["convert-m3fd", "--raw", str(raw), "--split_file", str(split), "--out_dir", str(tmp_path / "out"),
+                  "--lamp", "lamp"])
+
+
+def test_m3fd_prepare_masters(m3fd, tmp_path):
+    tmp, _ = m3fd
+    manifest = run(["--benchmark", "masters", "--masters_root", str(tmp / "masters"), "--source_domain", "rgb",
+                    "--out_dir", str(tmp_path / "out"), "--date_created", "2026-01-01 00:00:00"])
+    assert manifest["val_domains"] == ["rgb", "thermal"] and len(manifest["objectified"]) == 3
+
+
 def test_prepare_masters_rejects_different_categories(masters, tmp_path):
     root, _ = masters
     bad = tmp_path / "masters"
