@@ -3,7 +3,7 @@
 #SBATCH --account=farm4trade_phd
 #SBATCH --job-name=M3FD_CONVERT
 #SBATCH --output=LOGS/%x_%j.out
-#SBATCH --time=00:30:00
+#SBATCH --time=01:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=2
 #
@@ -21,13 +21,14 @@ set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/..}"
 [[ -n ${VIRTUAL_ENV:-} ]] || source .venv/bin/activate
 M=${M:-/work/horizon_store/chiara/data/m3fd}
+export PYTHONUNBUFFERED=1                              # the log shows each step as it runs
 
-echo "+ $(date '+%F %T') on $(hostname), code $(git rev-parse --short HEAD)"
+echo "+ $(date "+%F %T") on $(hostname), code $(git rev-parse --short HEAD 2>/dev/null || echo "? (no git on the node)")"
 python tools/m3fd_crops.py "$M/raw" --cls Lamp --out "$M/lamp_crops.png"
 for v in v1 v2; do
     for lamp in "street lamp" "traffic light"; do
         tag=${v}_${lamp// /_}
-        echo "+ $tag"
+        echo "+ $(date "+%T") $tag"
         python -m abra convert-m3fd --raw "$M/raw" --split_file "abra/data/splits/m3fd_split_$v.json" \
             --out_dir "$M/masters/$tag" --lamp "$lamp"
         python -m abra prepare-data --benchmark masters --masters_root "$M/masters/$tag" --source_domain rgb \

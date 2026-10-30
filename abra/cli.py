@@ -18,6 +18,7 @@ Commands
 Run ``python -m abra <command> -h`` for the options of a command.
 """
 import argparse
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -136,9 +137,31 @@ def add_transport_args(p, residual_required):
                    help="ABRA: scale each layer by ||sigma_T|| / ||sigma_S||")
 
 
-def build_parser():
+DATA_COMMANDS = ("prepare-data", "data-stats", "convert-bdd", "convert-coco", "convert-m3fd")
+
+
+def add_data_commands(sub):
+    """The annotation commands: standard library only."""
+    from abra.data.prepare import add_prepare_args
+    add_prepare_args(sub.add_parser("prepare-data", help="build the Cityscapes -> Foggy Cityscapes annotation splits"))
+    from abra.data.stats import add_stats_args
+    add_stats_args(sub.add_parser("data-stats", help="class-partition statistics of a benchmark"))
+    from abra.data.bdd import add_bdd_args
+    add_bdd_args(sub.add_parser("convert-bdd", help="BDD-format label files -> COCO json (SDGOD)"))
+    from abra.data.coco_domain import add_coco_args
+    add_coco_args(sub.add_parser("convert-coco", help="COCO json of one split -> master file of one domain (FLIR)"))
+    from abra.data.m3fd import add_m3fd_args
+    add_m3fd_args(sub.add_parser("convert-m3fd", help="M3FD xml + split file -> rgb and thermal master files"))
+
+
+def build_parser(data_only=False):
+    """``data_only``: only the annotation commands, without importing torch and the model (the fda parser does), which
+    can take very long on a CPU node."""
     parser = argparse.ArgumentParser(prog="abra", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
+    if data_only:
+        add_data_commands(sub)
+        return parser
 
     p = sub.add_parser("train-domain", help="train a domain expert (Objectification)")
     add_run_args(p)
@@ -208,21 +231,13 @@ def build_parser():
     add_diagnose_args(sub.add_parser("diagnose", help="weight-space diagnostics D1-D3 (no data)"))
     from abra.eval.report import add_report_args
     add_report_args(sub.add_parser("report", help="collect results.json files into one table"))
-    from abra.data.prepare import add_prepare_args
-    add_prepare_args(sub.add_parser("prepare-data", help="build the Cityscapes -> Foggy Cityscapes annotation splits"))
-    from abra.data.stats import add_stats_args
-    add_stats_args(sub.add_parser("data-stats", help="class-partition statistics of a benchmark"))
-    from abra.data.bdd import add_bdd_args
-    add_bdd_args(sub.add_parser("convert-bdd", help="BDD-format label files -> COCO json (SDGOD)"))
-    from abra.data.coco_domain import add_coco_args
-    add_coco_args(sub.add_parser("convert-coco", help="COCO json of one split -> master file of one domain (FLIR)"))
-    from abra.data.m3fd import add_m3fd_args
-    add_m3fd_args(sub.add_parser("convert-m3fd", help="M3FD xml + split file -> rgb and thermal master files"))
+    add_data_commands(sub)
     return parser
 
 
 def main(argv=None):
-    args = build_parser().parse_args(argv)
+    argv = sys.argv[1:] if argv is None else list(argv)
+    args = build_parser(data_only=bool(argv) and argv[0] in DATA_COMMANDS).parse_args(argv)
     if args.command == "diagnose":
         from abra.diagnostics.command import diagnose
         return diagnose(args)
